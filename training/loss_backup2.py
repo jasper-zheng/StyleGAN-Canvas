@@ -39,8 +39,8 @@ class StyleGAN2Loss(Loss):
         self.blur_init_sigma    = blur_init_sigma
         self.blur_fade_kimg     = blur_fade_kimg
 
-    def run_G(self, z, c, cond_img = None, update_emas=False):
-        skips_out = reversed(self.G.appended_net(cond_img)) if cond_img is not None else None
+    def run_G(self, z, c, reals = None, update_emas=False):
+        skips_out = reversed(self.G.appended_net(reals)) if reals is not None else None
         ws = self.G.mapping(z, c, update_emas=update_emas)
         if self.style_mixing_prob > 0:
             with torch.autograd.profiler.record_function('style_mixing'):
@@ -61,7 +61,7 @@ class StyleGAN2Loss(Loss):
         logits = self.D(img, c, update_emas=update_emas)
         return logits
 
-    def accumulate_gradients(self, phase, real_img, cond_img, real_c, gen_z, gen_c, gain, cur_nimg, mute = True):
+    def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, gain, cur_nimg, mute = True):
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
         if self.pl_weight == 0:
             phase = {'Greg': 'none', 'Gboth': 'Gmain'}.get(phase, phase)
@@ -73,8 +73,7 @@ class StyleGAN2Loss(Loss):
         if phase in ['Gmain', 'Gboth']:
             with torch.autograd.profiler.record_function('Gmain_forward'):
                 real_img_tmp = real_img.detach().requires_grad_(phase in ['Gmain', 'Gboth']) ############## hi
-                con_img_temp = cond_img.detach().requires_grad_(phase in ['Gmain', 'Gboth'])
-                gen_img, _gen_ws = self.run_G(gen_z, gen_c, con_img_temp)
+                gen_img, _gen_ws = self.run_G(gen_z, gen_c, real_img_tmp)
                 gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma)
                 training_stats.report('Loss/scores/fake', gen_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
@@ -95,8 +94,8 @@ class StyleGAN2Loss(Loss):
         if phase in ['Greg', 'Gboth']:
             with torch.autograd.profiler.record_function('Gpl_forward'):
                 batch_size = gen_z.shape[0] // self.pl_batch_shrink
-                con_img_temp = cond_img.detach().requires_grad_(phase in ['Greg', 'Gboth'])[:batch_size]
-                gen_img, gen_ws = self.run_G(gen_z[:batch_size], gen_c[:batch_size], con_img_temp) ###### ?????
+                real_img_tmp = real_img.detach().requires_grad_(phase in ['Greg', 'Gboth'])[:batch_size]
+                gen_img, gen_ws = self.run_G(gen_z[:batch_size], gen_c[:batch_size], real_img_tmp) ###### ?????
                 pl_noise = torch.randn_like(gen_img) / np.sqrt(gen_img.shape[2] * gen_img.shape[3])
                 with torch.autograd.profiler.record_function('pl_grads'), conv2d_gradfix.no_weight_gradients(self.pl_no_weight_grad):
                     pl_grads = torch.autograd.grad(outputs=[(gen_img * pl_noise).sum()], inputs=[gen_ws], create_graph=True, only_inputs=True)[0]
@@ -114,8 +113,8 @@ class StyleGAN2Loss(Loss):
         loss_Dgen = 0
         if phase in ['Dmain', 'Dboth']:
             with torch.autograd.profiler.record_function('Dgen_forward'):
-                cond_img_temp = cond_img.detach().requires_grad_(phase in ['Gmain', 'Gboth'])
-                gen_img, _gen_ws = self.run_G(gen_z, gen_c, cond_img_temp, update_emas=True)
+                real_img_tmp = real_img.detach().requires_grad_(phase in ['Gmain', 'Gboth'])
+                gen_img, _gen_ws = self.run_G(gen_z, gen_c, real_img_tmp, update_emas=True)
                 gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, update_emas=True)
                 training_stats.report('Loss/scores/fake', gen_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())

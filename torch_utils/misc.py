@@ -159,7 +159,51 @@ def copy_params_and_buffers(src_module, dst_module, require_all=False):
     for name, tensor in named_params_and_buffers(dst_module):
         assert (name in src_tensors) or (not require_all)
         if name in src_tensors:
-            tensor.copy_(src_tensors[name].detach()).requires_grad_(tensor.requires_grad)
+            if src_tensors[name].shape==tensor.shape:
+              print(f'{name}: shape matched')
+              tensor.copy_(src_tensors[name].detach()).requires_grad_(tensor.requires_grad)
+            else:
+              print(f'unmatched layer: {name}')
+
+def copy_shaped_params_and_buffers(src_module, dst_module, require_all=False):
+    assert isinstance(src_module, torch.nn.Module)
+    assert isinstance(dst_module, torch.nn.Module)
+    src_tensors = dict(named_params_and_buffers(src_module))
+    for name, tensor in named_params_and_buffers(dst_module):
+        assert (name in src_tensors) or (not require_all)
+        if name in src_tensors:
+            if src_tensors[name].shape==tensor.shape:
+                print(f'{name}: shape {tensor.shape} matched')
+                tensor.copy_(src_tensors[name].detach()).requires_grad_(tensor.requires_grad)
+            elif len(tensor.shape) == 4:
+              if tensor.shape[0] > src_tensors[name].shape[0]:
+                  device = tensor.device
+                  print(f'{name}: {src_tensors[name].shape} -> {tensor.shape}')
+                  add_shape = (tensor.shape[0] - src_tensors[name].shape[0],tensor.shape[1], tensor.shape[2], tensor.shape[3])
+                  tensor.copy_(torch.cat((src_tensors[name], torch.rand(add_shape)),dim=0).detach().requires_grad_(tensor.requires_grad))
+                  
+              elif tensor.shape[1] > src_tensors[name].shape[1]:
+                  device = tensor.device
+                  # add_shape = tensor.shape
+                  print(f'{name}: {src_tensors[name].shape} -> {tensor.shape}')
+                  add_shape = (tensor.shape[0], tensor.shape[1] - src_tensors[name].shape[1], tensor.shape[2], tensor.shape[3])
+                  tensor.copy_(torch.cat((src_tensors[name], torch.rand(add_shape)),dim=1).detach().requires_grad_(tensor.requires_grad))
+            elif len(tensor.shape) == 2:
+              if tensor.shape[0] > src_tensors[name].shape[0]:
+                  device = tensor.device
+                  print(f'{name}: {src_tensors[name].shape} -> {tensor.shape}')
+                  add_shape = (tensor.shape[0] - src_tensors[name].shape[0],tensor.shape[1])
+                  tensor.copy_(torch.cat((src_tensors[name], torch.rand(add_shape)),dim=0).detach().requires_grad_(tensor.requires_grad))
+                  
+              elif tensor.shape[1] > src_tensors[name].shape[1]:
+                  device = tensor.device
+                  # add_shape = tensor.shape
+                  print(f'{name}: {src_tensors[name].shape} -> {tensor.shape}')
+                  add_shape = (tensor.shape[0], tensor.shape[1] - src_tensors[name].shape[1])
+                  tensor.copy_(torch.cat((src_tensors[name], torch.rand(add_shape)),dim=1).detach().requires_grad_(tensor.requires_grad))
+
+            else:
+              print(f'unmatched layer: {name}: {tensor.shape}')
 
 #----------------------------------------------------------------------------
 # Context manager for easily enabling/disabling DistributedDataParallel

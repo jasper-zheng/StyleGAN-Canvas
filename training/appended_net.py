@@ -97,6 +97,7 @@ class AppendedNet(torch.nn.Module):
         img_sizes,
         p_dim = (3,256,256),
         skip_channels_idx = [0, 3, 6, 7, 10],
+        skip_connection   = [1, 1, 0, 0,  0],
         layer_fp16 = []
     ):
         super().__init__()
@@ -104,6 +105,7 @@ class AppendedNet(torch.nn.Module):
         self.img_sizes = img_sizes
         self.img_channels = img_channels
         self.skip_channels_idx = skip_channels_idx
+        # self.skip_connection = skip_connection
         print('hiiii appended net')
         self.device = torch.device('cuda')
         layer_fp16.reverse()
@@ -111,19 +113,29 @@ class AppendedNet(torch.nn.Module):
 
         self.skip_down_channels = []
         self.skip_down_sizes = []
+        self.skip_connection = []
+        count = 0
         for idx, (c, s) in enumerate(zip(self.img_channels, self.img_sizes)):
           if idx in skip_channels_idx:
             self.skip_down_channels.append(int(c//2))
             self.skip_down_sizes.append(int(s))
+            if skip_connection[count]:
+                self.skip_connection.append(1)
+            else:
+                self.skip_connection.append(0)
+            count += 1
           else:
             self.skip_down_channels.append(0)
             self.skip_down_sizes.append(0)
+            self.skip_connection.append(0)
 
         self.skip_down_channels.reverse()
         self.skip_down_sizes.reverse()
+        self.skip_connection.reverse()
 
         print(self.skip_down_channels)
         print(self.skip_down_sizes)
+        print(self.skip_connection)
         assert len(self.skip_down_channels) == len(self.skip_down_sizes), f'what \n{self.skip_down_channels}\n{self.skip_down_sizes}'
         # print(p_dim)
         
@@ -147,10 +159,12 @@ class AppendedNet(torch.nn.Module):
             c_mid = c
             c_out = c
             layer = ResConvBlock(c_in, c_mid, c_out, kernel_size=3, paddings = paddings if count>0 else 0, scale_factor = 0.5 if count>0 else 1, is_fp16 = fp)
-            name = f'AL{idx}_C{c_out}_R'
+            out_size = 0.5*out_size if count>0 else out_size
+            name = f'AL{idx}_R{out_size}_C{c_out}'
             self.down_names.append(name)
             setattr(self, name, layer)
             count+=1
+            
           else:
             self.down_names.append(None)
 
@@ -160,12 +174,16 @@ class AppendedNet(torch.nn.Module):
     x = torch.nn.functional.pad(x,(10,10,10,10),mode='reflect')
     x = self.in_proj(x.to(torch.float16))
     skips = []
-    for idx, name in enumerate(self.down_names):
+    for idx, (name, connect) in enumerate(zip(self.down_names,self.skip_connection)):
       if name:
         # print(x.shape)
         # print(name)
         x = getattr(self,name)(x)
-        skips.append(x)
+        
+        if connect:
+            skips.append(x)
+        else:
+            skips.append(None)
       else:
         skips.append(None)
 

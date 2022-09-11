@@ -415,6 +415,7 @@ class SynthesisNetwork(torch.nn.Module):
         output_scale        = 0.25,     # Scale factor for the output image.
         num_fp16_res        = 4,        # Use FP16 for the N highest resolutions.
         skip_channels_idx   = [0, 3, 6, 7, 10],
+        skip_connection     = [0, 0, 0, 0,  0],
         **layer_kwargs,                 # Arguments for SynthesisLayer.
     ):
         super().__init__()
@@ -428,6 +429,7 @@ class SynthesisNetwork(torch.nn.Module):
         self.output_scale = output_scale
         self.num_fp16_res = num_fp16_res
         self.skip_channels_idx = skip_channels_idx
+        # self.skip_connection = skip_connection
 
         # Geometric progression of layer cutoffs and min. stopbands.
         last_cutoff = self.img_resolution / 2 # f_{c,N}
@@ -449,13 +451,21 @@ class SynthesisNetwork(torch.nn.Module):
         # Compute the skip channels
         self.skip_down_channels = []
         self.skip_down_sizes = []
+        self.skip_connection = []
+        count = 0
         for idx, (c, s) in enumerate(zip(self.channels, self.sizes)):
           if idx in skip_channels_idx:
             self.skip_down_channels.append(int(c//2))
             self.skip_down_sizes.append(int(s))
+            if skip_connection[count]:
+                self.skip_connection.append(1)
+            else:
+                self.skip_connection.append(0)
+            count += 1
           else:
             self.skip_down_channels.append(0)
             self.skip_down_sizes.append(0)
+            self.skip_connection.append(0)
 
         assert len(self.skip_down_channels) == len(self.skip_down_sizes), f'whatt???? \n{self.skip_down_channels}\n{self.skip_down_sizes}'
 
@@ -478,8 +488,10 @@ class SynthesisNetwork(torch.nn.Module):
             # c_in = int(channels[prev]) + 
             if idx == 0:
               c_in = int(channels[prev])
-            else:
+            elif self.skip_connection[prev]:
               c_in = int(channels[prev])+self.skip_down_channels[prev]
+            else:
+              c_in = int(channels[prev])
             # print(f'c_in: {c_in}')
             layer = SynthesisLayer(
                 w_dim=self.w_dim, is_torgb=is_torgb, is_critically_sampled=is_critically_sampled, use_fp16=use_fp16,
@@ -534,6 +546,7 @@ class Generator(torch.nn.Module):
         mapping_kwargs      = {},   # Arguments for MappingNetwork.
         projecting_img_dim  = (3,256,256),
         skip_channels_idx   = [0, 3, 6, 7, 10],
+        skip_connection     = [1, 1, 1, 0,  0],
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
@@ -546,10 +559,10 @@ class Generator(torch.nn.Module):
         assert len(projecting_img_dim)==3, f'projecting_img_dim takes image dim as tuple like (3, 256, 256)'
         self.p_size = projecting_img_dim[1]
         self.p_channel = projecting_img_dim[0]
-        self.synthesis = SynthesisNetwork(w_dim=w_dim, img_resolution=img_resolution, img_channels=img_channels, skip_channels_idx=skip_channels_idx, **synthesis_kwargs)
+        self.synthesis = SynthesisNetwork(w_dim=w_dim, img_resolution=img_resolution, img_channels=img_channels, skip_channels_idx=skip_channels_idx, skip_connection=skip_connection, **synthesis_kwargs)
         self.num_ws = self.synthesis.num_ws
         self.mapping = MappingNetwork(z_dim=z_dim, c_dim=c_dim, w_dim=w_dim, num_ws=self.num_ws, **mapping_kwargs)
-        self.appended_net = AppendedNet(self.synthesis.channels, self.synthesis.sizes, self.p_dim, skip_channels_idx, self.synthesis.layer_fp16)
+        self.appended_net = AppendedNet(self.synthesis.channels, self.synthesis.sizes, self.p_dim, skip_channels_idx, skip_connection, self.synthesis.layer_fp16)
 
     def forward(self, z, c, skips_in, truncation_psi=1, truncation_cutoff=None, update_emas=False, **synthesis_kwargs):
         # print(skips_in.shape)
