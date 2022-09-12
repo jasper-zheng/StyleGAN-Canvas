@@ -128,6 +128,7 @@ def training_loop(
     image_snapshot_ticks    = 50,       # How often to save image snapshots? None = disable.
     network_snapshot_ticks  = 50,       # How often to save network snapshots? None = disable.
     append_to               = '/content/stylegan3-r-ffhqu-256x256.pkl',
+    use_domain_images_only  = True,
     resume_pkl              = None,     # Network pickle to resume training from.
     resume_kimg             = 0,        # First kimg to report when resuming training.
     cudnn_benchmark         = True,     # Enable torch.backends.cudnn.benchmark?
@@ -170,8 +171,10 @@ def training_loop(
         print(f'Start new appended net from "{append_to}"')
         with dnnlib.util.open_url(append_to) as f:
             resume_data = legacy.load_network_pkl(f)
+            
         for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
             misc.copy_shaped_params_and_buffers(resume_data[name], module, require_all=False)
+        G_plain = resume_data['G_ema'].eval().requires_grad_(False).to(device)
 
     # Resume from existing pickle.
     if (resume_pkl is not None) and (rank == 0):
@@ -240,10 +243,17 @@ def training_loop(
     if rank == 0:
         print('Exporting sample images...')
         grid_size, images, labels = setup_snapshot_image_grid(training_set=training_set)
-        save_image_grid(images, os.path.join(run_dir, 'reals.png'), drange=[0,255], grid_size=grid_size)
+        print(f'{grid_size} {images.shape} {labels.shape}')
+        
         grid_z = torch.randn([labels.shape[0], G.z_dim], device=device).split(batch_gpu)
         grid_c = torch.from_numpy(labels).to(device).split(batch_gpu)
-        grid_p = torch.from_numpy(images).to(device).to(torch.float32) / 127.5 - 1
+
+        images = torch.cat([G_plain(z=z, c=c, truncation_psi = 1, noise_mode='const').cpu() for z, c in zip(grid_z, grid_c)]).numpy()
+        save_image_grid(images, os.path.join(run_dir, 'reals.png'), drange=[-1,1], grid_size=grid_size)
+
+        
+        # grid_p = torch.from_numpy(images).to(device).to(torch.float32) / 127.5 - 1
+        grid_p = torch.from_numpy(images).to(device).to(torch.float32)
         grid_p_no_split = preprocess_to_conditions(grid_p)
         print(f'grid_p min max: {grid_p.min()} {grid_p.max()}')
         grid_p = grid_p_no_split.split(batch_gpu)
@@ -288,7 +298,14 @@ def training_loop(
         # Fetch training data.
         with torch.autograd.profiler.record_function('data_fetch'):
             phase_real_img, phase_real_c = next(training_set_iterator)
-            phase_real_img = phase_real_img.to(device).to(torch.float32) / 127.5 - 1
+            # print(phase_real_img.shape)
+            # print(phase_real_c.shape)
+            # phase_real_img = phase_real_img.to(device).to(torch.float32) / 127.5 - 1
+
+            z_plain = torch.randn([len(phases) * batch_size, G.z_dim], device=device)
+            phase_real_img = G_plain(z=z_plain, c=phase_real_c, truncation_psi = 1, noise_mode='const')
+            # print(f'->{phase_real_img.shape}')
+
             phase_cond_imgs = preprocess_to_conditions(phase_real_img)
 
             phase_real_img = phase_real_img.split(batch_gpu)
@@ -299,6 +316,9 @@ def training_loop(
             all_gen_c = [training_set.get_label(np.random.randint(len(training_set))) for _ in range(len(phases) * batch_size)]
             all_gen_c = torch.from_numpy(np.stack(all_gen_c)).pin_memory().to(device)
             all_gen_c = [phase_gen_c.split(batch_gpu) for phase_gen_c in all_gen_c.split(batch_size)]
+
+
+
 
         # Execute training phases. ##########################
         for phase, phase_gen_z, phase_gen_c in zip(phases, all_gen_z, all_gen_c):
