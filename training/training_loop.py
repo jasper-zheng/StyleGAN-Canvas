@@ -260,7 +260,7 @@ def training_loop(
         # print(f'z: {grid_z[0].shape}')
         # print(images.shape)
         # print(grid_p[0].shape)
-        
+        grid_z = torch.randn([labels.shape[0], G.z_dim], device=device).split(batch_gpu)
         images = torch.cat([G_ema(z=z, c=c, skips_in=p, noise_mode='const').cpu() for z, c, p in zip(grid_z, grid_c, grid_p)]).numpy()
         
         save_image_grid(grid_p_no_split.cpu(), os.path.join(run_dir, 'cond_init.png'), drange=[-1,1], grid_size=grid_size)

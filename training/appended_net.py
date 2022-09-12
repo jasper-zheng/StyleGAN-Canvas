@@ -98,13 +98,15 @@ class AppendedNet(torch.nn.Module):
         p_dim = (3,256,256),
         skip_channels_idx = [0, 3, 6, 7, 10],
         skip_connection   = [1, 1, 0, 0,  0],
-        layer_fp16 = []
+        layer_fp16 = [],
+        num_appended_ws = 3
     ):
         super().__init__()
         self.p_dim = p_dim
         self.img_sizes = img_sizes
         self.img_channels = img_channels
         self.skip_channels_idx = skip_channels_idx
+        self.num_appended_ws = num_appended_ws
         # self.skip_connection = skip_connection
         print('hiiii appended net')
         self.device = torch.device('cuda')
@@ -159,7 +161,7 @@ class AppendedNet(torch.nn.Module):
             c_mid = c
             c_out = c
             layer = ResConvBlock(c_in, c_mid, c_out, kernel_size=3, paddings = paddings if count>0 else 0, scale_factor = 0.5 if count>0 else 1, is_fp16 = fp)
-            out_size = 0.5*out_size if count>0 else out_size
+            out_size = int(0.5*out_size) if count>0 else out_size
             name = f'AL{idx}_R{out_size}_C{c_out}'
             self.down_names.append(name)
             setattr(self, name, layer)
@@ -167,6 +169,48 @@ class AppendedNet(torch.nn.Module):
             
           else:
             self.down_names.append(None)
+        print(f'last skip shape: {out_size}')
+
+        self.epilogue = []
+        # 16 -> 8 -> 4
+        for idx in range(2):
+          out_size = out_size//2
+          c_in = down_channels[-1]//2 if idx > 0 else down_channels[-1]
+          c_min = down_channels[-1]//2
+          c_out = down_channels[-1]//2
+          layer = ResConvBlock(c_in, c_mid, c_out, kernel_size=3, paddings = 0, scale_factor = 0.5, is_fp16 = False)
+          name = f'EP{idx}_R{out_size}_C{c_out}'
+          self.epilogue.append(name)
+          setattr(self, name, layer)
+        
+        print(f'epilogue: R{out_size} C{c_out}')
+
+        name = f'EP_flatten'
+        layer = torch.nn.Flatten(start_dim=1)
+        self.epilogue.append(name)
+        setattr(self, name, layer)
+        computed_flatten_size = out_size * out_size * c_out
+        in_c = int(computed_flatten_size)
+        out_c = 512
+        name = f'EP_mapping_1'
+        layer = torch.nn.Linear(in_c,out_c,bias=True)
+        self.epilogue.append(name)
+        setattr(self, name, layer)
+        name = f'EP_mapping_1_act'
+        layer = torch.nn.LeakyReLU(0.2)
+        self.epilogue.append(name)
+        setattr(self, name, layer)
+        name = f'EP_mapping_2'
+        layer = torch.nn.Linear(out_c,out_c,bias=True)
+        self.epilogue.append(name)
+        setattr(self, name, layer)
+        name = f'EP_mapping_2_act'
+        layer = torch.nn.LeakyReLU(0.2)
+        self.epilogue.append(name)
+        setattr(self, name, layer)
+
+
+
 
         # self.test_conv = torch.nn.Conv2d(3,3,3,stride=1,padding=1,bias=True)
 
@@ -187,10 +231,17 @@ class AppendedNet(torch.nn.Module):
       else:
         skips.append(None)
 
+    x = torch.nn.functional.pad(x,(-10,-10,-10,-10))
+    for idx, name in enumerate(self.epilogue):
+      # print(name)
+      # print(x.shape)
+      x = getattr(self,name)(x)
+
+    x = x.unsqueeze(1).repeat([1, self.num_appended_ws, 1])
     # for s in skips:
     #   if s is not None:
     #     print(s.shape)
     #   else:
     #     print(s)
 
-    return skips
+    return skips, x

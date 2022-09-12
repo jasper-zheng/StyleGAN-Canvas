@@ -505,17 +505,19 @@ class SynthesisNetwork(torch.nn.Module):
             setattr(self, name, layer)
             self.layer_names.append(name)
 
-    def forward(self, ws, skips = None, **layer_kwargs):
+    def forward(self, ws, replaced_w, skips = None, **layer_kwargs):
         misc.assert_shape(ws, [None, self.num_ws, self.w_dim])
         ws = ws.to(torch.float32).unbind(dim=1)
-
+        replaced_w = replaced_w.to(torch.float32).unbind(dim=1)
         # Execute layers.
-        x = self.input(ws[0])
+        x = self.input(ws[0]) if len(replaced_w) == 0 else self.input(replaced_w[0])
         if not skips:
           skips = [None for _ in self.layer_names]
         for idx, (name, w, skip) in enumerate(zip(self.layer_names, ws[1:], skips)):
-            
-            x = getattr(self, name)(x, w, **layer_kwargs)
+            if idx < len(replaced_w[1:]):
+              x = getattr(self, name)(x, replaced_w[1:][idx], **layer_kwargs)
+            else:
+              x = getattr(self, name)(x, w, **layer_kwargs)
             if not skip==None:
               x = torch.cat([x,skip],dim=1)
         if self.output_scale != 1:
@@ -547,6 +549,7 @@ class Generator(torch.nn.Module):
         projecting_img_dim  = (3,256,256),
         skip_channels_idx   = [0, 3, 6, 7, 10],
         skip_connection     = [1, 1, 1, 0,  0],
+        num_appended_ws     = 3,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
@@ -562,13 +565,18 @@ class Generator(torch.nn.Module):
         self.synthesis = SynthesisNetwork(w_dim=w_dim, img_resolution=img_resolution, img_channels=img_channels, skip_channels_idx=skip_channels_idx, skip_connection=skip_connection, **synthesis_kwargs)
         self.num_ws = self.synthesis.num_ws
         self.mapping = MappingNetwork(z_dim=z_dim, c_dim=c_dim, w_dim=w_dim, num_ws=self.num_ws, **mapping_kwargs)
-        self.appended_net = AppendedNet(self.synthesis.channels, self.synthesis.sizes, self.p_dim, skip_channels_idx, skip_connection, self.synthesis.layer_fp16)
+        self.appended_net = AppendedNet(self.synthesis.channels, self.synthesis.sizes, self.p_dim, skip_channels_idx, skip_connection, self.synthesis.layer_fp16, num_appended_ws = num_appended_ws)
 
     def forward(self, z, c, skips_in, truncation_psi=1, truncation_cutoff=None, update_emas=False, **synthesis_kwargs):
         # print(skips_in.shape)
-        skips_out = reversed(self.appended_net(skips_in)) if not skips_in==None else None
+        skips_out, replaced_w = self.appended_net(skips_in)
+        skips_out = reversed(skips_out)
+        # skips_out = reversed(self.appended_net(skips_in)) if not skips_in==None else None
+
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
-        img = self.synthesis(ws, skips = skips_out, update_emas=update_emas, **synthesis_kwargs)
+        
+        
+        img = self.synthesis(ws, replaced_w, skips = skips_out, update_emas=update_emas, **synthesis_kwargs)
         return img
 
 #----------------------------------------------------------------------------
