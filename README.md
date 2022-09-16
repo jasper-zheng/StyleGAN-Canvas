@@ -1,1 +1,1 @@
-# Pixel2StyleGAN  
+# Pixel2StyleGAN3  
