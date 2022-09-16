@@ -1,1 +1,1 @@
-# stylegan3-rewriting
+# Pixel2StyleGAN  
