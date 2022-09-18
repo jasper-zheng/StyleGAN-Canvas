@@ -87,7 +87,13 @@ class StyleGAN2Loss(Loss):
 
                 loss_Gtarget = torch.nn.functional.mse_loss(gen_img, real_img_tmp)
                 
-                loss_Gnet = loss_Gmain + loss_Gtarget
+                
+                # loss_Gnet = (loss_Gmain * 0.3 + loss_Gtarget * 2).clamp(0,3)
+                # loss_Gnet = (loss_Gmain * 0.6 + loss_Gtarget * 0.3).clamp(0,3)
+                loss_Gnet = (loss_Gmain * 0.8 + loss_Gtarget * 0.2).clamp(0,3)
+                
+                
+                
                 
                 if not mute:
                   print(f'net_err: {loss_Gnet.item():.6}\t main_err: {loss_Gmain.item():.6}\t target_err: {loss_Gtarget.item():.6}')

@@ -27,6 +27,8 @@ import legacy
 from metrics import metric_main
 
 from torch_utils.ops import upfirdn2d
+
+from training.canny_filter import CannyFilter
 #----------------------------------------------------------------------------
 
 def setup_snapshot_image_grid(training_set, random_seed=0):
@@ -68,13 +70,30 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 
 #----------------------------------------------------------------------------
 
-def preprocess_to_conditions(real_imgs, blur_sigma = 10):
-  blur_size = np.floor(blur_sigma * 3)
-  with torch.autograd.profiler.record_function('blur'):
-    f = torch.arange(-blur_size, blur_size + 1, device=real_imgs.device).div(blur_sigma).square().neg().exp2()
-    blr_imgs = upfirdn2d.filter2d(real_imgs, f / f.sum())
+class Preprocess(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.filter = CannyFilter(k_gaussian=3,mu=0,sigma=1,k_sobel=3)
+    
+    @torch.no_grad()
+    def preprocess_to_conditions(self, img_tensor):
+        '''
+        parameter: 
+            img_tensor: [-1,1]
+        return: 
+            img_tensor: [-1,1]
+        '''
+        img_tensor = self.filter(img_tensor*0.5+1).clamp(0,1)
+        return img_tensor*2-1
+        
+
+# def preprocess_to_conditions(real_imgs, blur_sigma = 10):
+#   blur_size = np.floor(blur_sigma * 3)
+#   with torch.autograd.profiler.record_function('blur'):
+#     f = torch.arange(-blur_size, blur_size + 1, device=real_imgs.device).div(blur_sigma).square().neg().exp2()
+#     blr_imgs = upfirdn2d.filter2d(real_imgs, f / f.sum())
   
-  return blr_imgs
+#   return blr_imgs
 
 
 #----------------------------------------------------------------------------
@@ -127,7 +146,9 @@ def training_loop(
     kimg_per_tick           = 4,        # Progress snapshot interval.
     image_snapshot_ticks    = 50,       # How often to save image snapshots? None = disable.
     network_snapshot_ticks  = 50,       # How often to save network snapshots? None = disable.
-    append_to               = '/content/stylegan3-r-ffhqu-256x256.pkl',
+    # append_to               = '/notebooks/stylegan3-r-ffhqu-256x256.pkl',
+    append_to               = None,
+    append_from_resume      = False,
     use_domain_images_only  = True,
     resume_pkl              = None,     # Network pickle to resume training from.
     resume_kimg             = 0,        # First kimg to report when resuming training.
@@ -168,12 +189,13 @@ def training_loop(
     G_ema = copy.deepcopy(G).eval()
 
     if (append_to is not None) and (rank == 0):
-        print(f'Start new appended net from "{append_to}"')
+        print(f'Appended net to "{append_to}"')
         with dnnlib.util.open_url(append_to) as f:
             resume_data = legacy.load_network_pkl(f)
-            
-        for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
-            misc.copy_shaped_params_and_buffers(resume_data[name], module, require_all=False)
+        if append_from_resume:
+            print(f'Start new appended net from "{append_to}"')
+            for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
+                misc.copy_shaped_params_and_buffers(resume_data[name], module, require_all=False)
         G_plain = resume_data['G_ema'].eval().requires_grad_(False).to(device)
 
     # Resume from existing pickle.
@@ -240,6 +262,9 @@ def training_loop(
     grid_z = None
     grid_c = None
     grid_p = None
+    pre_process = Preprocess().to(device)
+    
+    
     if rank == 0:
         print('Exporting sample images...')
         grid_size, images, labels = setup_snapshot_image_grid(training_set=training_set)
@@ -248,13 +273,14 @@ def training_loop(
         grid_z = torch.randn([labels.shape[0], G.z_dim], device=device).split(batch_gpu)
         grid_c = torch.from_numpy(labels).to(device).split(batch_gpu)
 
-        images = torch.cat([G_plain(z=z, c=c, truncation_psi = 1, noise_mode='const').cpu() for z, c in zip(grid_z, grid_c)]).numpy()
-        save_image_grid(images, os.path.join(run_dir, 'reals.png'), drange=[-1,1], grid_size=grid_size)
+        # images = torch.cat([G_plain(z=z, c=c, truncation_psi = 1, noise_mode='const').clamp(-1,1).cpu() for z, c in zip(grid_z, grid_c)]).numpy()
+        save_image_grid(images, os.path.join(run_dir, 'reals.png'), drange=[0,255], grid_size=grid_size)
 
         
-        # grid_p = torch.from_numpy(images).to(device).to(torch.float32) / 127.5 - 1
-        grid_p = torch.from_numpy(images).to(device).to(torch.float32)
-        grid_p_no_split = preprocess_to_conditions(grid_p)
+        grid_p = torch.from_numpy(images).to(device).to(torch.float32) / 127.5 - 1
+        # grid_p = torch.from_numpy(images).to(device).to(torch.float32)
+        # grid_p_no_split = preprocess_to_conditions(grid_p)
+        grid_p_no_split = pre_process.preprocess_to_conditions(grid_p)
         print(f'grid_p min max: {grid_p.min()} {grid_p.max()}')
         grid_p = grid_p_no_split.split(batch_gpu)
         # print(f'z: {grid_z[0].shape}')
@@ -300,14 +326,16 @@ def training_loop(
             phase_real_img, phase_real_c = next(training_set_iterator)
             # print(phase_real_img.shape)
             # print(phase_real_c.shape)
-            # phase_real_img = phase_real_img.to(device).to(torch.float32) / 127.5 - 1
+            phase_real_img = phase_real_img.to(device).to(torch.float32) / 127.5 - 1
 
-            z_plain = torch.randn([len(phases) * batch_size, G.z_dim], device=device)
-            phase_real_img = G_plain(z=z_plain, c=phase_real_c, truncation_psi = 1, noise_mode='const')
+            # z_plain = torch.randn([len(phases) * batch_size, G.z_dim], device=device)
+            # phase_real_img = G_plain(z=z_plain, c=phase_real_c, truncation_psi = 1, noise_mode='const').clamp(-1,1)
+            
             # print(f'->{phase_real_img.shape}')
 
-            phase_cond_imgs = preprocess_to_conditions(phase_real_img)
-
+            phase_cond_imgs = pre_process.preprocess_to_conditions(phase_real_img)
+            # print(f'cond min:{phase_cond_imgs.min()} cond max:{phase_cond_imgs.max()}')
+            # print(f'cond min:{phase_real_img.min()} cond max:{phase_real_img.max()}')
             phase_real_img = phase_real_img.split(batch_gpu)
             phase_cond_imgs = phase_cond_imgs.split(batch_gpu)
             phase_real_c = phase_real_c.to(device).split(batch_gpu)

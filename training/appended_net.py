@@ -84,7 +84,7 @@ class ResConvBlock(torch.nn.Module):
       x = self.conv2(x, gain=np.sqrt(0.5))
       x = short_cut.add_(x)
 
-      
+      x = torch.nn.functional.leaky_relu(x, 0.2)
 
       # pass
       return x
@@ -119,7 +119,7 @@ class AppendedNet(torch.nn.Module):
         count = 0
         for idx, (c, s) in enumerate(zip(self.img_channels, self.img_sizes)):
           if idx in skip_channels_idx:
-            self.skip_down_channels.append(int(c//2))
+            self.skip_down_channels.append(int(c//4))
             self.skip_down_sizes.append(int(s))
             if skip_connection[count]:
                 self.skip_connection.append(1)
@@ -214,7 +214,7 @@ class AppendedNet(torch.nn.Module):
 
         # self.test_conv = torch.nn.Conv2d(3,3,3,stride=1,padding=1,bias=True)
 
-  def forward(self, x):
+  def forward(self, x, num_appended_ws_len = None):
     x = torch.nn.functional.pad(x,(10,10,10,10),mode='reflect')
     x = self.in_proj(x.to(torch.float16))
     skips = []
@@ -236,8 +236,8 @@ class AppendedNet(torch.nn.Module):
       # print(name)
       # print(x.shape)
       x = getattr(self,name)(x)
-
-    x = x.unsqueeze(1).repeat([1, self.num_appended_ws, 1])
+    appended_ws_len = self.num_appended_ws if num_appended_ws_len == None else num_appended_ws_len
+    x = x.unsqueeze(1).repeat([1, appended_ws_len, 1])
     # for s in skips:
     #   if s is not None:
     #     print(s.shape)

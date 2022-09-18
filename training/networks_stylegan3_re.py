@@ -415,7 +415,7 @@ class SynthesisNetwork(torch.nn.Module):
         output_scale        = 0.25,     # Scale factor for the output image.
         num_fp16_res        = 4,        # Use FP16 for the N highest resolutions.
         skip_channels_idx   = [0, 3, 6, 7, 10],
-        skip_connection     = [0, 0, 0, 0,  0],
+        skip_connection     = [0, 0, 0, 0,  0],]
         **layer_kwargs,                 # Arguments for SynthesisLayer.
     ):
         super().__init__()
@@ -455,7 +455,7 @@ class SynthesisNetwork(torch.nn.Module):
         count = 0
         for idx, (c, s) in enumerate(zip(self.channels, self.sizes)):
           if idx in skip_channels_idx:
-            self.skip_down_channels.append(int(c//2))
+            self.skip_down_channels.append(int(c//4))
             self.skip_down_sizes.append(int(s))
             if skip_connection[count]:
                 self.skip_connection.append(1)
@@ -506,6 +506,7 @@ class SynthesisNetwork(torch.nn.Module):
             self.layer_names.append(name)
 
     def forward(self, ws, replaced_w, skips = None, **layer_kwargs):
+        
         misc.assert_shape(ws, [None, self.num_ws, self.w_dim])
         ws = ws.to(torch.float32).unbind(dim=1)
         replaced_w = replaced_w.to(torch.float32).unbind(dim=1)
@@ -546,10 +547,10 @@ class Generator(torch.nn.Module):
         img_resolution,             # Output resolution.
         img_channels,               # Number of output color channels.
         mapping_kwargs      = {},   # Arguments for MappingNetwork.
-        projecting_img_dim  = (3,256,256),
+        projecting_img_dim  = (1,256,256),
         skip_channels_idx   = [0, 3, 6, 7, 10],
-        skip_connection     = [1, 1, 1, 0,  0],
-        num_appended_ws     = 3,
+        skip_connection     = [1, 1, 1, 1,  1],
+        num_appended_ws     = 8,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
