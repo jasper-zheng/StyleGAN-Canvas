@@ -415,7 +415,7 @@ class SynthesisNetwork(torch.nn.Module):
         output_scale        = 0.25,     # Scale factor for the output image.
         num_fp16_res        = 4,        # Use FP16 for the N highest resolutions.
         skip_channels_idx   = [0, 3, 6, 7, 10],
-        skip_connection     = [0, 0, 0, 0,  0],]
+        skip_connection     = [0, 0, 0, 0,  0],
         **layer_kwargs,                 # Arguments for SynthesisLayer.
     ):
         super().__init__()
@@ -549,8 +549,8 @@ class Generator(torch.nn.Module):
         mapping_kwargs      = {},   # Arguments for MappingNetwork.
         projecting_img_dim  = (1,256,256),
         skip_channels_idx   = [0, 3, 6, 7, 10],
-        skip_connection     = [1, 1, 1, 1,  1],
-        num_appended_ws     = 8,
+        skip_connection     = [1, 0, 0, 0,  0],
+        num_appended_ws     = 4,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
