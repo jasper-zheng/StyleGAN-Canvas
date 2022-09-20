@@ -80,8 +80,9 @@ class ResConvBlock(torch.nn.Module):
       short_cut = torch.nn.functional.pad(short_cut,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
       # print(f'shortcut:{short_cut.shape}')
       x = self.conv1(x)
-      x = torch.nn.functional.pad(x,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
       x = self.conv2(x, gain=np.sqrt(0.5))
+      x = torch.nn.functional.pad(x,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
+      
       x = short_cut.add_(x)
 
       x = torch.nn.functional.leaky_relu(x, 0.2)
