@@ -14,12 +14,32 @@ from torch_utils import training_stats
 from torch_utils.ops import conv2d_gradfix
 from torch_utils.ops import upfirdn2d
 
+from torchvision.transforms.functional import to_pil_image
+from torchvision.utils import make_grid
+import PIL.Image
+import os
 #----------------------------------------------------------------------------
 
 class Loss:
     def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, gain, cur_nimg): # to be overridden by subclass
         raise NotImplementedError()
 
+def save_image_grid(img, fname, drange, grid_size):
+    
+    grid = make_grid(img[0], nrow = 6)
+    img = to_pil_image(grid.add(1).div(2).clamp(0, 1).cpu())
+    img.save(fname)
+#     gw, gh = grid_size
+#     _N, C, H, W = img.shape
+#     img = img.reshape([gh, gw, C, H, W])
+#     img = img.transpose(0, 3, 1, 4, 2)
+#     img = img.reshape([gh * H, gw * W, C])
+
+#     assert C in [1, 3]
+#     if C == 1:
+#         PIL.Image.fromarray(img[:, :, 0], 'L').save(fname)
+#     if C == 3:
+#         PIL.Image.fromarray(img, 'RGB').save(fname)
 #----------------------------------------------------------------------------
 
 class StyleGAN2Loss(Loss):
@@ -55,7 +75,7 @@ class StyleGAN2Loss(Loss):
         
         return img, ws
 
-    def run_D(self, img, c, blur_sigma=0, update_emas=False):
+    def run_D(self, img, c, blur_sigma=0, update_emas=False, grid_size = None):
         blur_size = np.floor(blur_sigma * 3)
         if blur_size > 0:
             with torch.autograd.profiler.record_function('blur'):
@@ -63,10 +83,12 @@ class StyleGAN2Loss(Loss):
                 img = upfirdn2d.filter2d(img, f / f.sum())
         if self.augment_pipe is not None:
             img = self.augment_pipe(img)
+        if not  grid_size is None:
+            save_image_grid(img.detach(), os.path.join('.', 'blur.png'), drange=[-1,1], grid_size=grid_size)
         logits = self.D(img, c, update_emas=update_emas)
         return logits
 
-    def accumulate_gradients(self, phase, real_img, cond_img, real_c, gen_z, gen_c, gain, cur_nimg, mute = True):
+    def accumulate_gradients(self, phase, real_img, cond_img, real_c, gen_z, gen_c, gain, cur_nimg, mute = True, grid_size = None):
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
         if self.pl_weight == 0:
             phase = {'Greg': 'none', 'Gboth': 'Gmain'}.get(phase, phase)
@@ -88,9 +110,11 @@ class StyleGAN2Loss(Loss):
                 loss_Gtarget = torch.nn.functional.mse_loss(gen_img, real_img_tmp)
                 
                 
-                # loss_Gnet = (loss_Gmain * 0.3 + loss_Gtarget * 2).clamp(0,3)
+                loss_Gnet = (loss_Gmain * 0.3 + loss_Gtarget * 1).clamp(0,3)
+                
+                # loss_Gnet = (loss_Gmain * 0.1 + loss_Gtarget * 2.2).clamp(0,3)
                 # loss_Gnet = (loss_Gmain * 0.6 + loss_Gtarget * 0.3).clamp(0,3)
-                loss_Gnet = (loss_Gmain * 0.8 + loss_Gtarget * 0.2).clamp(0,3)
+                # loss_Gnet = (loss_Gmain * 0.8 + loss_Gtarget * 0.2).clamp(0,3)
                 
                 
                 

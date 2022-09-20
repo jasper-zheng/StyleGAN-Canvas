@@ -180,28 +180,36 @@ def copy_shaped_params_and_buffers(src_module, dst_module, require_all=False):
                   device = tensor.device
                   print(f'{name}: {src_tensors[name].shape} -> {tensor.shape}')
                   add_shape = (tensor.shape[0] - src_tensors[name].shape[0],tensor.shape[1], tensor.shape[2], tensor.shape[3])
-                  tensor.copy_(torch.cat((src_tensors[name], torch.rand(add_shape)),dim=0).detach().requires_grad_(tensor.requires_grad))
+                  tensor.copy_(torch.cat((src_tensors[name], torch.zeros(add_shape)),dim=0).detach().requires_grad_(tensor.requires_grad))
                   
               elif tensor.shape[1] > src_tensors[name].shape[1]:
                   device = tensor.device
                   # add_shape = tensor.shape
                   print(f'{name}: {src_tensors[name].shape} -> {tensor.shape}')
                   add_shape = (tensor.shape[0], tensor.shape[1] - src_tensors[name].shape[1], tensor.shape[2], tensor.shape[3])
-                  tensor.copy_(torch.cat((src_tensors[name], torch.rand(add_shape)),dim=1).detach().requires_grad_(tensor.requires_grad))
+                  tensor.copy_(torch.cat((src_tensors[name], torch.zeros(add_shape)),dim=1).detach().requires_grad_(tensor.requires_grad))
             elif len(tensor.shape) == 2:
               if tensor.shape[0] > src_tensors[name].shape[0]:
                   device = tensor.device
                   print(f'{name}: {src_tensors[name].shape} -> {tensor.shape}')
                   add_shape = (tensor.shape[0] - src_tensors[name].shape[0],tensor.shape[1])
-                  tensor.copy_(torch.cat((src_tensors[name], torch.rand(add_shape)),dim=0).detach().requires_grad_(tensor.requires_grad))
+                  tensor.copy_(torch.cat((src_tensors[name], torch.zeros(add_shape)),dim=0).detach().requires_grad_(tensor.requires_grad))
                   
               elif tensor.shape[1] > src_tensors[name].shape[1]:
                   device = tensor.device
                   # add_shape = tensor.shape
                   print(f'{name}: {src_tensors[name].shape} -> {tensor.shape}')
                   add_shape = (tensor.shape[0], tensor.shape[1] - src_tensors[name].shape[1])
-                  tensor.copy_(torch.cat((src_tensors[name], torch.rand(add_shape)),dim=1).detach().requires_grad_(tensor.requires_grad))
-
+                  tensor.copy_(torch.cat((src_tensors[name], torch.zeros(add_shape)),dim=1).detach().requires_grad_(tensor.requires_grad))
+            elif len(tensor.shape) == 1:
+              if tensor.shape[0] > src_tensors[name].shape[0]:
+                  device = tensor.device
+                  print(f'{name}: {src_tensors[name].shape} -> {tensor.shape}')
+                  add_shape = (tensor.shape[0] - src_tensors[name].shape[0])
+                  tensor.copy_(torch.cat((src_tensors[name], torch.zeros(add_shape)),dim=0).detach().requires_grad_(tensor.requires_grad))
+              else:
+                print('error')
+                    
             else:
               print(f'unmatched layer: {name}: {tensor.shape}')
 

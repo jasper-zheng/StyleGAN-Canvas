@@ -71,10 +71,12 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 #----------------------------------------------------------------------------
 
 class Preprocess(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, blur_sigma = 9):
         super().__init__()
-        self.filter = CannyFilter(k_gaussian=3,mu=0,sigma=1,k_sobel=3)
-    
+        self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
+        self.device = torch.device('cuda')
+        self.blur_size = np.floor(blur_sigma * 3)
+        self.blur_sigma = blur_sigma
     @torch.no_grad()
     def preprocess_to_conditions(self, img_tensor):
         '''
@@ -83,6 +85,11 @@ class Preprocess(torch.nn.Module):
         return: 
             img_tensor: [-1,1]
         '''
+        
+        with torch.autograd.profiler.record_function('blur'):
+          f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
+          img_tensor = upfirdn2d.filter2d(img_tensor, f / f.sum())
+        
         img_tensor = self.filter(img_tensor*0.5+1).clamp(0,1)
         return img_tensor*2-1
         
@@ -146,9 +153,9 @@ def training_loop(
     kimg_per_tick           = 4,        # Progress snapshot interval.
     image_snapshot_ticks    = 50,       # How often to save image snapshots? None = disable.
     network_snapshot_ticks  = 50,       # How often to save network snapshots? None = disable.
-    # append_to               = '/notebooks/stylegan3-r-ffhqu-256x256.pkl',
-    append_to               = None,
-    append_from_resume      = False,
+    append_to               = '/notebooks/training-runs/canny_edge/00027-stylegan3-r-ffhq-u-256x256-gpus1-batch16-gamma2/network-snapshot-000064.pkl',
+    # append_to               = None,
+    append_from_resume      = True,
     use_domain_images_only  = True,
     resume_pkl              = None,     # Network pickle to resume training from.
     resume_kimg             = 0,        # First kimg to report when resuming training.
@@ -282,6 +289,7 @@ def training_loop(
         # grid_p_no_split = preprocess_to_conditions(grid_p)
         grid_p_no_split = pre_process.preprocess_to_conditions(grid_p)
         print(f'grid_p min max: {grid_p.min()} {grid_p.max()}')
+        print(f'processed grid_p min max: {grid_p_no_split.min()} {grid_p_no_split.max()}')
         grid_p = grid_p_no_split.split(batch_gpu)
         # print(f'z: {grid_z[0].shape}')
         # print(images.shape)
@@ -359,7 +367,7 @@ def training_loop(
             phase.opt.zero_grad(set_to_none=True)
             phase.module.requires_grad_(True)
             for i, (real_img, cond_img, real_c, gen_z, gen_c) in enumerate(zip(phase_real_img, phase_cond_imgs, phase_real_c, phase_gen_z, phase_gen_c)):
-                loss.accumulate_gradients(phase=phase.name, real_img=real_img, cond_img=cond_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg, mute = False if i==0 and batch_idx%10==0 else True)
+                loss.accumulate_gradients(phase=phase.name, real_img=real_img, cond_img=cond_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg, mute = False if i==0 and batch_idx%10==0 else True, grid_size = grid_size)
             phase.module.requires_grad_(False)
 
             # Update weights.
