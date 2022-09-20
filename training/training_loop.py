@@ -153,10 +153,10 @@ def training_loop(
     kimg_per_tick           = 4,        # Progress snapshot interval.
     image_snapshot_ticks    = 50,       # How often to save image snapshots? None = disable.
     network_snapshot_ticks  = 50,       # How often to save network snapshots? None = disable.
-    append_to               = '/notebooks/training-runs/canny_edge/00027-stylegan3-r-ffhq-u-256x256-gpus1-batch16-gamma2/network-snapshot-000064.pkl',
-    # append_to               = None,
-    append_from_resume      = True,
-    use_domain_images_only  = True,
+    # append_to               = '/notebooks/training-runs/canny_edge/00027-stylegan3-r-ffhq-u-256x256-gpus1-batch16-gamma2/network-snapshot-000064.pkl',
+    append_to               = None,
+    # append_from_resume      = True,
+    append_from_resume      = False,
     resume_pkl              = None,     # Network pickle to resume training from.
     resume_kimg             = 0,        # First kimg to report when resuming training.
     cudnn_benchmark         = True,     # Enable torch.backends.cudnn.benchmark?
