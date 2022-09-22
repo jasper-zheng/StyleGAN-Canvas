@@ -120,7 +120,7 @@ class AppendedNet(torch.nn.Module):
         count = 0
         for idx, (c, s) in enumerate(zip(self.img_channels, self.img_sizes)):
           if idx in skip_channels_idx:
-            self.skip_down_channels.append(int(c//4))
+            self.skip_down_channels.append(int(c//2))
             self.skip_down_sizes.append(int(s))
             if skip_connection[count]:
                 self.skip_connection.append(1)
