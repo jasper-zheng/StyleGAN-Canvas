@@ -515,8 +515,8 @@ class SynthesisNetwork(torch.nn.Module):
         if skips is None:
           skips = [None for _ in self.layer_names]
 
-        print(len(self.layer_names))
-        print(len(ws[1:]))
+        # print(len(self.layer_names))
+        # print(len(ws[1:]))
         # print(len(skips))
         for idx, (name, w, skip) in enumerate(zip(self.layer_names, ws[1:], skips)):
             # print(name)
@@ -579,7 +579,7 @@ class Generator(torch.nn.Module):
     def forward(self, z, c, skips_in, truncation_psi=1, truncation_cutoff=None, update_emas=False, **synthesis_kwargs):
         # print(skips_in.shape)
         skips_out, replaced_w = self.appended_net(skips_in)
-        print(len(skips_out))
+        # print(len(skips_out))
         skips_out = reversed(skips_out)
         # skips_out = reversed(self.appended_net(skips_in)) if not skips_in==None else None
 
