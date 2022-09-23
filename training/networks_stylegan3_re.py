@@ -455,7 +455,7 @@ class SynthesisNetwork(torch.nn.Module):
         count = 0
         for idx, (c, s) in enumerate(zip(self.channels, self.sizes)):
           if idx in skip_channels_idx:
-            self.skip_down_channels.append(int(c//2))
+            self.skip_down_channels.append(int(c//4))
             self.skip_down_sizes.append(int(s))
             if skip_connection[count]:
                 self.skip_connection.append(1)
@@ -512,14 +512,22 @@ class SynthesisNetwork(torch.nn.Module):
         replaced_w = replaced_w.to(torch.float32).unbind(dim=1)
         # Execute layers.
         x = self.input(ws[0]) if len(replaced_w) == 0 else self.input(replaced_w[0])
-        if not skips:
+        if skips is None:
           skips = [None for _ in self.layer_names]
+
+        print(len(self.layer_names))
+        print(len(ws[1:]))
+        # print(len(skips))
         for idx, (name, w, skip) in enumerate(zip(self.layer_names, ws[1:], skips)):
+            # print(name)
+            # print(x.shape)
             if idx < len(replaced_w[1:]):
               x = getattr(self, name)(x, replaced_w[1:][idx], **layer_kwargs)
             else:
               x = getattr(self, name)(x, w, **layer_kwargs)
-            if not skip==None:
+            if skip is not None:
+              # print(f'x: {x.shape}')
+              # print(f's: {skip.shape}')
               x = torch.cat([x,skip],dim=1)
         if self.output_scale != 1:
             x = x * self.output_scale
@@ -548,8 +556,8 @@ class Generator(torch.nn.Module):
         img_channels,               # Number of output color channels.
         mapping_kwargs      = {},   # Arguments for MappingNetwork.
         projecting_img_dim  = (1,256,256),
-        skip_channels_idx   = [0, 3, 6, 7, 10],
-        skip_connection     = [1, 1, 0, 0,  0],
+        skip_channels_idx   = [0, 2, 3, 4, 5, 6, 7, 10],
+        skip_connection     = [1, 1, 1, 1, 0, 0, 0,  0],
         num_appended_ws     = 4,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
@@ -571,11 +579,14 @@ class Generator(torch.nn.Module):
     def forward(self, z, c, skips_in, truncation_psi=1, truncation_cutoff=None, update_emas=False, **synthesis_kwargs):
         # print(skips_in.shape)
         skips_out, replaced_w = self.appended_net(skips_in)
+        print(len(skips_out))
         skips_out = reversed(skips_out)
         # skips_out = reversed(self.appended_net(skips_in)) if not skips_in==None else None
 
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
         
+        # for s in skips_out:
+        #   print(s.shape if s is not None else "none")
         
         img = self.synthesis(ws, replaced_w, skips = skips_out, update_emas=update_emas, **synthesis_kwargs)
         return img

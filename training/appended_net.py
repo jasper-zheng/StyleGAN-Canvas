@@ -60,8 +60,8 @@ class ResConvBlock(torch.nn.Module):
         self.in_channels = in_channels
         self.is_fp16 = is_fp16
         self.paddings = paddings 
-        self.conv1 = DownConv2dLayer(in_channels, mid_channels, kernel_size = kernel_size, paddings = kernel_size//2, bias = True, activation = activation, is_fp16 = is_fp16)
-        self.conv2 = DownConv2dLayer(mid_channels, out_channels, kernel_size = kernel_size, paddings = kernel_size//2, bias = True, activation = activation, is_fp16 = is_fp16)
+        # self.conv1 = DownConv2dLayer(in_channels, mid_channels, kernel_size = kernel_size, paddings = kernel_size//2, bias = True, activation = activation, is_fp16 = is_fp16)
+        self.conv2 = DownConv2dLayer(in_channels, out_channels, kernel_size = kernel_size, paddings = kernel_size//2, bias = True, activation = activation, is_fp16 = is_fp16)
 
         self.scale_factor = scale_factor
         if not scale_factor == 1:
@@ -77,15 +77,18 @@ class ResConvBlock(torch.nn.Module):
         # x = torch.nn.functional.interpolate(x, scale_factor=self.scale_facto, mode='nearest')
         x = self.pool(x)
       short_cut = self.skip_mapping(x) * np.sqrt(0.5)
-      short_cut = torch.nn.functional.pad(short_cut,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
+      # short_cut = torch.nn.functional.pad(short_cut,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
       # print(f'shortcut:{short_cut.shape}')
-      x = self.conv1(x)
+      # x = self.conv1(x)
       x = self.conv2(x, gain=np.sqrt(0.5))
-      x = torch.nn.functional.pad(x,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
+      # x = torch.nn.functional.pad(x,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
       
       x = short_cut.add_(x)
-
       x = torch.nn.functional.leaky_relu(x, 0.2)
+
+      # x = torch.nn.functional.pad(x,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
+
+      
 
       # pass
       return x
@@ -97,8 +100,8 @@ class AppendedNet(torch.nn.Module):
         img_channels,
         img_sizes,
         p_dim = (3,256,256),
-        skip_channels_idx = [0, 3, 6, 7, 10],
-        skip_connection   = [1, 1, 0, 0,  0],
+        skip_channels_idx = [0, 3, 5, 7, 10],
+        skip_connection   = [1, 1, 1, 1,  1],
         layer_fp16 = [],
         num_appended_ws = 3
     ):
@@ -117,10 +120,19 @@ class AppendedNet(torch.nn.Module):
         self.skip_down_channels = []
         self.skip_down_sizes = []
         self.skip_connection = []
+        self.skip_scale = []
         count = 0
         for idx, (c, s) in enumerate(zip(self.img_channels, self.img_sizes)):
+          if idx==0:
+            # scale = 0.5
+            scale = 1.0
+          else:
+            # scale = (self.img_sizes[idx-1]-20)/(s-20) if idx < 13 and count < len(skip_channels_idx)-1 else 1.0
+            scale = (self.img_sizes[idx-1]-20)/(s-20) if idx < 13 else 1.0
+          self.skip_scale.append(scale)
+
           if idx in skip_channels_idx:
-            self.skip_down_channels.append(int(c//2))
+            self.skip_down_channels.append(int(c//4))
             self.skip_down_sizes.append(int(s))
             if skip_connection[count]:
                 self.skip_connection.append(1)
@@ -135,16 +147,18 @@ class AppendedNet(torch.nn.Module):
         self.skip_down_channels.reverse()
         self.skip_down_sizes.reverse()
         self.skip_connection.reverse()
+        self.skip_scale.reverse()
 
         print(self.skip_down_channels)
         print(self.skip_down_sizes)
         print(self.skip_connection)
+        print(self.skip_scale)
         assert len(self.skip_down_channels) == len(self.skip_down_sizes), f'what \n{self.skip_down_channels}\n{self.skip_down_sizes}'
         # print(p_dim)
         
         ### compute paddings
         first_size = next((x for x in self.skip_down_sizes if x), None) #276
-        paddings = (first_size - p_dim[1])//4
+        paddings = (first_size - p_dim[1])//2
         print(f'padding {paddings}')
 
         self.in_proj = DownConv2dLayer(p_dim[0], next((x for x in self.skip_down_channels if x), None), 1, paddings = 0, bias=True, activation='linear', is_fp16 = layer_fp16[0])
@@ -161,10 +175,15 @@ class AppendedNet(torch.nn.Module):
             c_in = c if count == 0 else down_channels[count-1]
             c_mid = c
             c_out = c
-            layer = ResConvBlock(c_in, c_mid, c_out, kernel_size=3, paddings = paddings if count>0 else 0, scale_factor = 0.5 if count>0 else 1, is_fp16 = fp)
-            out_size = int(0.5*out_size) if count>0 else out_size
+            scale_factor = self.skip_scale[idx]
+            # padding = paddings if count>0 and self.skip_scale[idx] == 0.5 else 0
+            padding = paddings
+            layer = ResConvBlock(c_in, c_mid, c_out, kernel_size=3, paddings = padding, scale_factor = self.skip_scale[idx], is_fp16 = fp)
+            # out_size = int(0.5*out_size) if count>0 else out_size
+            out_size = int(self.skip_scale[idx]*out_size)
             name = f'AL{idx}_R{out_size}_C{c_out}'
             self.down_names.append(name)
+            print(name)
             setattr(self, name, layer)
             count+=1
             
@@ -216,23 +235,25 @@ class AppendedNet(torch.nn.Module):
         # self.test_conv = torch.nn.Conv2d(3,3,3,stride=1,padding=1,bias=True)
 
   def forward(self, x, num_appended_ws_len = None):
-    x = torch.nn.functional.pad(x,(10,10,10,10),mode='reflect')
+    # x = torch.nn.functional.pad(x,(10,10,10,10),mode='reflect')
     x = self.in_proj(x.to(torch.float16))
     skips = []
     for idx, (name, connect) in enumerate(zip(self.down_names,self.skip_connection)):
       if name:
-        # print(x.shape)
-        # print(name)
-        x = getattr(self,name)(x)
-        
         if connect:
-            skips.append(x)
+            skips.append(torch.nn.functional.pad(x,(layer.paddings,layer.paddings,layer.paddings,layer.paddings), mode='reflect'))
         else:
             skips.append(None)
+        layer = getattr(self,name)
+        x = layer(x)
+        # print(f'-> {x.shape}')
+        # print(name)
+        
       else:
         skips.append(None)
 
-    x = torch.nn.functional.pad(x,(-10,-10,-10,-10))
+
+    # x = torch.nn.functional.pad(x,(-10,-10,-10,-10))
     for idx, name in enumerate(self.epilogue):
       # print(name)
       # print(x.shape)

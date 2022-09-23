@@ -90,8 +90,9 @@ class Preprocess(torch.nn.Module):
           f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
           img_tensor = upfirdn2d.filter2d(img_tensor, f / f.sum())
         
-        img_tensor = self.filter(img_tensor*0.5+1).clamp(0,1)
-        return img_tensor*2-1
+        img_tensor = self.filter(img_tensor*0.5+1).clamp(0,1)*2-1
+        # print(img_tensor.shape)
+        return img_tensor
         
 
 # def preprocess_to_conditions(real_imgs, blur_sigma = 10):
