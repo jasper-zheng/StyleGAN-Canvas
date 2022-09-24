@@ -241,11 +241,11 @@ class AppendedNet(torch.nn.Module):
     skips = []
     for idx, (name, connect) in enumerate(zip(self.down_names,self.skip_connection)):
       if name:
+        layer = getattr(self,name)
         if connect:
             skips.append(torch.nn.functional.pad(x,(layer.paddings,layer.paddings,layer.paddings,layer.paddings), mode='reflect'))
         else:
             skips.append(None)
-        layer = getattr(self,name)
         x = layer(x)
         # print(f'-> {x.shape}')
         # print(name)

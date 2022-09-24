@@ -152,11 +152,11 @@ def parse_comma_separated_list(s):
 
 # Connection settings.
 @click.option('--connection-start',    help='idx of layer that skip connections start from', metavar='INT', type=click.IntRange(min=0), default=0, show_default=True)
-@click.option('--connection-end',      help='idx of layer that skip connections end', metavar='INT', type=click.IntRange(min=0), default=11, show_default=True)
+@click.option('--connection-end',      help='idx of layer that skip connections end', metavar='INT', type=click.IntRange(min=0), default=12, show_default=True)
 @click.option('--connection-grow-from',help='grow skip connections from', metavar='INT', type=click.IntRange(min=0), default=4, show_default=True)
 @click.option('--replaced-ws',         help='encode the first N extended w+ latent space', metavar='INT', type=click.IntRange(min=0), default=6, show_default=True)
 @click.option('--connection-grow-kimg',help='grow connection after the first N kimg', metavar='INT', type=click.IntRange(min=0), default=192, show_default=True)
-@click.option('--connection-grow-step',help='grow connection after each N kimg', metavar='INT', type=click.IntRange(min=0), default=96, show_default=True)
+@click.option('--connection-grow-step',help='grow connection after each N kimg', metavar='INT', type=click.IntRange(min=0), default=48, show_default=True)
 
 # Misc settings.
 @click.option('--desc',         help='String to include in result dir name', metavar='STR',     type=str)
@@ -249,7 +249,7 @@ def main(**kwargs):
         c.G_kwargs.fused_modconv_default = 'inference_only' # Speed up training by using regular convolutions instead of grouped convolutions.
         c.loss_kwargs.pl_no_weight_grad = True # Speed up path length regularization by skipping gradient computation wrt. conv2d weights.
     else:
-        c.G_kwargs.class_name = 'training.networks_pix2stylegan3.Generator'
+        c.G_kwargs.class_name = 'training.networks_stylegan3_re.Generator'
         c.G_kwargs.magnitude_ema_beta = 0.5 ** (c.batch_size / (20 * 1e3))
         if opts.cfg == 'pix2stylegan3-r':
             c.G_kwargs.conv_kernel = 1 # Use 1x1 convolutions.
