@@ -157,8 +157,9 @@ class AppendedNet(torch.nn.Module):
         # print(p_dim)
         
         ### compute paddings
-        first_size = next((x for x in self.skip_down_sizes if x), None) #276
-        paddings = (first_size - p_dim[1])//2
+        # first_size = next((x for x in self.skip_down_sizes if x), None) #276
+        # paddings = (first_size - p_dim[1])//2
+        paddings = 10
         print(f'padding {paddings}')
 
         self.in_proj = DownConv2dLayer(p_dim[0], next((x for x in self.skip_down_channels if x), None), 1, paddings = 0, bias=True, activation='linear', is_fp16 = layer_fp16[0])

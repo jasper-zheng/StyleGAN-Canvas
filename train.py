@@ -125,7 +125,7 @@ def parse_comma_separated_list(s):
 
 # Required.
 @click.option('--outdir',       help='Where to save the results', metavar='DIR',                required=True)
-@click.option('--cfg',          help='Base configuration',                                      type=click.Choice(['stylegan3-t', 'stylegan3-r', 'stylegan2']), required=True)
+@click.option('--cfg',          help='Base configuration',                                      type=click.Choice(['stylegan3-t', 'stylegan3-r', 'pix2stylegan3-r', 'stylegan2']), required=True)
 @click.option('--data',         help='Training data', metavar='[ZIP|DIR]',                      type=str, required=True)
 @click.option('--gpus',         help='Number of GPUs to use', metavar='INT',                    type=click.IntRange(min=1), required=True)
 @click.option('--batch',        help='Total batch size', metavar='INT',                         type=click.IntRange(min=1), required=True)
@@ -136,6 +136,7 @@ def parse_comma_separated_list(s):
 @click.option('--mirror',       help='Enable dataset x-flips', metavar='BOOL',                  type=bool, default=False, show_default=True)
 @click.option('--aug',          help='Augmentation mode',                                       type=click.Choice(['noaug', 'ada', 'fixed']), default='ada', show_default=True)
 @click.option('--resume',       help='Resume from given network pickle', metavar='[PATH|URL]',  type=str)
+@click.option('--resume-kimg',  help='Resume form kimg', metavar='INT',                         type=click.IntRange(min=1))
 @click.option('--freezed',      help='Freeze first layers of D', metavar='INT',                 type=click.IntRange(min=0), default=0, show_default=True)
 
 # Misc hyperparameters.
@@ -148,6 +149,14 @@ def parse_comma_separated_list(s):
 @click.option('--dlr',          help='D learning rate', metavar='FLOAT',                        type=click.FloatRange(min=0), default=0.002, show_default=True)
 @click.option('--map-depth',    help='Mapping network depth  [default: varies]', metavar='INT', type=click.IntRange(min=1))
 @click.option('--mbstd-group',  help='Minibatch std group size', metavar='INT',                 type=click.IntRange(min=1), default=4, show_default=True)
+
+# Connection settings.
+@click.option('--connection-start',    help='idx of layer that skip connections start from', metavar='INT', type=click.IntRange(min=0), default=0, show_default=True)
+@click.option('--connection-end',      help='idx of layer that skip connections end', metavar='INT', type=click.IntRange(min=0), default=11, show_default=True)
+@click.option('--connection-grow-from',help='grow skip connections from', metavar='INT', type=click.IntRange(min=0), default=4, show_default=True)
+@click.option('--replaced-ws',         help='encode the first N extended w+ latent space', metavar='INT', type=click.IntRange(min=0), default=6, show_default=True)
+@click.option('--connection-grow-kimg',help='grow connection after the first N kimg', metavar='INT', type=click.IntRange(min=0), default=192, show_default=True)
+@click.option('--connection-grow-step',help='grow connection after each N kimg', metavar='INT', type=click.IntRange(min=0), default=96, show_default=True)
 
 # Misc settings.
 @click.option('--desc',         help='String to include in result dir name', metavar='STR',     type=str)
@@ -242,10 +251,28 @@ def main(**kwargs):
     else:
         c.G_kwargs.class_name = 'training.networks_stylegan3_re.Generator'
         c.G_kwargs.magnitude_ema_beta = 0.5 ** (c.batch_size / (20 * 1e3))
+        if opts.cfg == 'pix2stylegan3-r':
+            c.G_kwargs.conv_kernel = 1 # Use 1x1 convolutions.
+            c.G_kwargs.channel_base *= 2 # Double the number of feature maps.
+            c.G_kwargs.channel_max *= 2
+            c.G_kwargs.connection_start        = opts.connection_start
+            c.G_kwargs.connection_end          = opts.connection_end
+            c.G_kwargs.connection_grow_from    = opts.connection_grow_from
+            c.G_kwargs.num_appended_ws         = opts.replaced_ws
+            c.connection_grow_step    = opts.connection_grow_step
+            c.connection_grow_kimg    = opts.connection_grow_kimg
+            c.G_kwargs.use_radial_filters = True # Use radially symmetric downsampling filters.
+            c.loss_kwargs.blur_init_sigma = 10 # Blur the images seen by the discriminator.
+            # c.loss_kwargs.blur_fade_kimg = c.batch_size * 200 / 32 # Fade out the blur during the first N kimg.
+            c.loss_kwargs.blur_fade_kimg = c.batch_size * 300 / 32 # Fade out the blur during the first N kimg.
         if opts.cfg == 'stylegan3-r':
             c.G_kwargs.conv_kernel = 1 # Use 1x1 convolutions.
             c.G_kwargs.channel_base *= 2 # Double the number of feature maps.
             c.G_kwargs.channel_max *= 2
+            c.G_kwargs.connection_start        = 0
+            c.G_kwargs.connection_end          = 0
+            c.G_kwargs.connection_grow_from    = 0
+            c.G_kwargs.num_appended_ws         = 0
             c.G_kwargs.use_radial_filters = True # Use radially symmetric downsampling filters.
             c.loss_kwargs.blur_init_sigma = 10 # Blur the images seen by the discriminator.
             # c.loss_kwargs.blur_fade_kimg = c.batch_size * 200 / 32 # Fade out the blur during the first N kimg.
@@ -262,9 +289,11 @@ def main(**kwargs):
     # Resume.
     if opts.resume is not None:
         c.resume_pkl = opts.resume
+        c.resume_kimg = opts.resume_kimg
         c.ada_kimg = 100 # Make ADA react faster at the beginning.
         c.ema_rampup = None # Disable EMA rampup.
         c.loss_kwargs.blur_init_sigma = 0 # Disable blur rampup.
+
 
     # Performance-related toggles.
     if opts.fp32:

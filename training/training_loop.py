@@ -154,12 +154,15 @@ def training_loop(
     kimg_per_tick           = 4,        # Progress snapshot interval.
     image_snapshot_ticks    = 50,       # How often to save image snapshots? None = disable.
     network_snapshot_ticks  = 50,       # How often to save network snapshots? None = disable.
+
     # append_to               = '/notebooks/training-runs/canny_edge/00027-stylegan3-r-ffhq-u-256x256-gpus1-batch16-gamma2/network-snapshot-000064.pkl',
     append_to               = None,
     # append_from_resume      = True,
     append_from_resume      = False,
     resume_pkl              = None,     # Network pickle to resume training from.
     resume_kimg             = 0,        # First kimg to report when resuming training.
+    connection_grow_step    = 4,
+    connection_grow_kimg    = 4,
     cudnn_benchmark         = True,     # Enable torch.backends.cudnn.benchmark?
     abort_fn                = None,     # Callback function for determining whether to abort training. Must return consistent results across ranks.
     progress_fn             = None,     # Callback function for updating training progress. Called for all ranks.
@@ -196,15 +199,15 @@ def training_loop(
     D = dnnlib.util.construct_class_by_name(**D_kwargs, **common_kwargs).train().requires_grad_(False).to(device) # subclass of torch.nn.Module
     G_ema = copy.deepcopy(G).eval()
 
-    if (append_to is not None) and (rank == 0):
-        print(f'Appended net to "{append_to}"')
-        with dnnlib.util.open_url(append_to) as f:
-            resume_data = legacy.load_network_pkl(f)
-        if append_from_resume:
-            print(f'Start new appended net from "{append_to}"')
-            for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
-                misc.copy_shaped_params_and_buffers(resume_data[name], module, require_all=False)
-        G_plain = resume_data['G_ema'].eval().requires_grad_(False).to(device)
+    # if (append_to is not None) and (rank == 0):
+    #     print(f'Appended net to "{append_to}"')
+    #     with dnnlib.util.open_url(append_to) as f:
+    #         resume_data = legacy.load_network_pkl(f)
+    #     if append_from_resume:
+    #         print(f'Start new appended net from "{append_to}"')
+    #         for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
+    #             misc.copy_shaped_params_and_buffers(resume_data[name], module, require_all=False)
+    #     # G_plain = resume_data['G_ema'].eval().requires_grad_(False).to(device)
 
     # Resume from existing pickle.
     if (resume_pkl is not None) and (rank == 0):
@@ -212,7 +215,7 @@ def training_loop(
         with dnnlib.util.open_url(resume_pkl) as f:
             resume_data = legacy.load_network_pkl(f)
         for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
-            misc.copy_params_and_buffers(resume_data[name], module, require_all=False)
+            misc.copy_shaped_params_and_buffers(resume_data[name], module, require_all=False)
 
     # Print network summary tables.
     if rank == 0:
@@ -328,9 +331,56 @@ def training_loop(
     batch_idx = 0
     if progress_fn is not None:
         progress_fn(0, total_kimg)
+
+    # connection_grow_end = 
+    # 4 6 8 
     while True:
 
-        # Fetch training data.
+        # Grow skip connections
+        if (rank==0) and (connection_grow_kimg is not None) and (connection_grow_step is not None) and (cur_nimg % (connection_grow_step*1000) == 0) and (cur_nimg > 0) and (G_kwargs.connection_grow_from+1<=G_kwargs.connection_grow_end):
+          G_kwargs.connection_grow_from += 1
+          print(f'Connection grows from {G_kwargs.connection_grow_from-2} -> {G_kwargs.connection_grow_from}')
+          G_new = dnnlib.util.construct_class_by_name(**G_kwargs, **common_kwargs).train().requires_grad_(False).to(device) # subclass of torch.nn.Module
+          G_ema_new = copy.deepcopy(G_new).eval()
+
+          misc.copy_shaped_params_and_buffers(G, G_new, require_all=False)
+          misc.copy_shaped_params_and_buffers(G_ema, G_ema_new, require_all=False)
+
+          G = G_new
+          G_ema = G_ema_new
+
+          if rank == 0:
+              print(f'Distributing across {num_gpus} GPUs...')
+          for module in [G, D, G_ema, augment_pipe]:
+              if module is not None and num_gpus > 1:
+                  for param in misc.params_and_buffers(module):
+                      torch.distributed.broadcast(param, src=0)
+          # Setup training phases.
+          if rank == 0:
+              print('Setting up training phases...')
+          loss = dnnlib.util.construct_class_by_name(device=device, G=G, D=D, augment_pipe=augment_pipe, **loss_kwargs) # subclass of training.loss.Loss
+          phases = []
+          for name, module, opt_kwargs, reg_interval in [('G', G, G_opt_kwargs, G_reg_interval), ('D', D, D_opt_kwargs, D_reg_interval)]:
+              if reg_interval is None:
+                  opt = dnnlib.util.construct_class_by_name(params=module.parameters(), **opt_kwargs) # subclass of torch.optim.Optimizer
+                  phases += [dnnlib.EasyDict(name=name+'both', module=module, opt=opt, interval=1)]
+              else: # Lazy regularization.
+                  mb_ratio = reg_interval / (reg_interval + 1)
+                  opt_kwargs = dnnlib.EasyDict(opt_kwargs)
+                  opt_kwargs.lr = opt_kwargs.lr * mb_ratio
+                  opt_kwargs.betas = [beta ** mb_ratio for beta in opt_kwargs.betas]
+                  opt = dnnlib.util.construct_class_by_name(module.parameters(), **opt_kwargs) # subclass of torch.optim.Optimizer
+                  phases += [dnnlib.EasyDict(name=name+'main', module=module, opt=opt, interval=1)]
+                  phases += [dnnlib.EasyDict(name=name+'reg', module=module, opt=opt, interval=reg_interval)]
+          for phase in phases:
+              phase.start_event = None
+              phase.end_event = None
+              if rank == 0:
+                  phase.start_event = torch.cuda.Event(enable_timing=True)
+                  phase.end_event = torch.cuda.Event(enable_timing=True)
+
+
+                # Fetch training data.
         with torch.autograd.profiler.record_function('data_fetch'):
             phase_real_img, phase_real_c = next(training_set_iterator)
             # print(phase_real_img.shape)
@@ -353,7 +403,6 @@ def training_loop(
             all_gen_c = [training_set.get_label(np.random.randint(len(training_set))) for _ in range(len(phases) * batch_size)]
             all_gen_c = torch.from_numpy(np.stack(all_gen_c)).pin_memory().to(device)
             all_gen_c = [phase_gen_c.split(batch_gpu) for phase_gen_c in all_gen_c.split(batch_size)]
-
 
 
 

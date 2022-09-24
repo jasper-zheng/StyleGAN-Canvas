@@ -489,7 +489,7 @@ class SynthesisNetwork(torch.nn.Module):
             if idx == 0:
               c_in = int(channels[prev])
             elif self.skip_connection[prev]:
-              c_in = int(channels[prev])+self.skip_down_channels[prev]
+              c_in = int(channels[prev])+self.skip_down_channels[idx]
             else:
               c_in = int(channels[prev])
             # print(f'c_in: {c_in}')
@@ -556,12 +556,22 @@ class Generator(torch.nn.Module):
         img_channels,               # Number of output color channels.
         mapping_kwargs      = {},   # Arguments for MappingNetwork.
         projecting_img_dim  = (1,256,256),
-        skip_channels_idx   = [0, 2, 3, 4, 5, 6, 7, 10],
-        skip_connection     = [1, 1, 1, 1, 0, 0, 0,  0],
-        num_appended_ws     = 4,
+        # skip_channels_idx   = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        # skip_connection     = [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+        # num_appended_ws     = 4,
+        connection_start        = 0,
+        connection_end          = 11,
+        connection_grow_from    = 4,
+        num_appended_ws         = 6,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
+        skip_channels_idx = np.arange(connection_start,connection_end,1,dtype=int).tolist()
+        skip_connection = np.zeros(connection_end - connection_start, dtype=int)
+        skip_connection[:connection_grow_from] = 1
+        skip_connection = skip_connection.tolist()
+        # print(skip_channels_idx)
+        # print(skip_connection)
         self.z_dim = z_dim
         self.c_dim = c_dim
         self.w_dim = w_dim
