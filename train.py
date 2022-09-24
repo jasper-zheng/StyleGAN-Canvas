@@ -249,7 +249,7 @@ def main(**kwargs):
         c.G_kwargs.fused_modconv_default = 'inference_only' # Speed up training by using regular convolutions instead of grouped convolutions.
         c.loss_kwargs.pl_no_weight_grad = True # Speed up path length regularization by skipping gradient computation wrt. conv2d weights.
     else:
-        c.G_kwargs.class_name = 'training.networks_stylegan3_re.Generator'
+        c.G_kwargs.class_name = 'training.networks_pix2stylegan3.Generator'
         c.G_kwargs.magnitude_ema_beta = 0.5 ** (c.batch_size / (20 * 1e3))
         if opts.cfg == 'pix2stylegan3-r':
             c.G_kwargs.conv_kernel = 1 # Use 1x1 convolutions.

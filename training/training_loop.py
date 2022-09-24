@@ -161,8 +161,8 @@ def training_loop(
     append_from_resume      = False,
     resume_pkl              = None,     # Network pickle to resume training from.
     resume_kimg             = 0,        # First kimg to report when resuming training.
-    connection_grow_step    = 4,
-    connection_grow_kimg    = 4,
+    connection_grow_step    = 48,
+    connection_grow_kimg    = 192,
     cudnn_benchmark         = True,     # Enable torch.backends.cudnn.benchmark?
     abort_fn                = None,     # Callback function for determining whether to abort training. Must return consistent results across ranks.
     progress_fn             = None,     # Callback function for updating training progress. Called for all ranks.
@@ -339,7 +339,7 @@ def training_loop(
         # Grow skip connections
         if (rank==0) and (connection_grow_kimg is not None) and (connection_grow_step is not None) and (cur_nimg % (connection_grow_step*1000) == 0) and (cur_nimg > 0) and (G_kwargs.connection_grow_from+1<=G_kwargs.connection_grow_end):
           G_kwargs.connection_grow_from += 1
-          print(f'Connection grows from {G_kwargs.connection_grow_from-2} -> {G_kwargs.connection_grow_from}')
+          print(f'Connection grows from {G_kwargs.connection_grow_from-1} -> {G_kwargs.connection_grow_from}')
           G_new = dnnlib.util.construct_class_by_name(**G_kwargs, **common_kwargs).train().requires_grad_(False).to(device) # subclass of torch.nn.Module
           G_ema_new = copy.deepcopy(G_new).eval()
 
