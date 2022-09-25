@@ -555,7 +555,7 @@ class Generator(torch.nn.Module):
         img_resolution,             # Output resolution.
         img_channels,               # Number of output color channels.
         mapping_kwargs      = {},   # Arguments for MappingNetwork.
-        projecting_img_dim  = (1,256,256),
+        projecting_img_dim  = (1,512,512),
         # skip_channels_idx   = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
         # skip_connection     = [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
         # num_appended_ws     = 4,

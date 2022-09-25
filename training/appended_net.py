@@ -246,6 +246,7 @@ class AppendedNet(torch.nn.Module):
             skips.append(torch.nn.functional.pad(x,(layer.paddings,layer.paddings,layer.paddings,layer.paddings), mode='reflect'))
         else:
             skips.append(None)
+        # print(name)
         x = layer(x)
         # print(f'-> {x.shape}')
         # print(name)
