@@ -71,12 +71,13 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 #----------------------------------------------------------------------------
 
 class Preprocess(torch.nn.Module):
-    def __init__(self, blur_sigma = 2):
+    def __init__(self, scale_factor = 0.08, in_size = 256):
         super().__init__()
-        self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
+        # self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
         self.device = torch.device('cuda')
-        self.blur_size = np.floor(blur_sigma * 3)
-        self.blur_sigma = blur_sigma
+        # self.blur_size = np.floor(blur_sigma * 3)
+        self.scale_factor = scale_factor
+        self.in_size = in_size
     @torch.no_grad()
     def preprocess_to_conditions(self, img_tensor):
         '''
@@ -86,12 +87,14 @@ class Preprocess(torch.nn.Module):
             img_tensor: [-1,1]
         '''
         
-        with torch.autograd.profiler.record_function('blur'):
-          f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
-          img_tensor = upfirdn2d.filter2d(img_tensor, f / f.sum())
+        # with torch.autograd.profiler.record_function('blur'):
+        #   f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
+        #   img_tensor = upfirdn2d.filter2d(img_tensor, f / f.sum())
         
-        img_tensor = self.filter(img_tensor*0.5+1).clamp(0,1)*2-1
+        # img_tensor = self.filter(img_tensor*0.5+1).clamp(0,1)*2-1
         # print(img_tensor.shape)
+        img_tensor = torch.nn.functional.interpolate(img_tensor, scale_factor = self.scale_factor)
+        img_tensor = torch.nn.functional.interpolate(img_tensor, size = (self.in_size,self.in_size), mode="bilinear")
         return img_tensor
         
 
@@ -470,17 +473,17 @@ def training_loop(
         fields = []
         fields += [f"tick {training_stats.report0('Progress/tick', cur_tick):<5d}"]
         fields += [f"kimg {training_stats.report0('Progress/kimg', cur_nimg / 1e3):<8.1f}"]
-        fields += [f"time {dnnlib.util.format_time(training_stats.report0('Timing/total_sec', tick_end_time - start_time)):<12s}"]
-        fields += [f"sec/tick {training_stats.report0('Timing/sec_per_tick', tick_end_time - tick_start_time):<7.1f}"]
-        fields += [f"sec/kimg {training_stats.report0('Timing/sec_per_kimg', (tick_end_time - tick_start_time) / (cur_nimg - tick_start_nimg) * 1e3):<7.2f}"]
-        fields += [f"maintenance {training_stats.report0('Timing/maintenance_sec', maintenance_time):<6.1f}"]
+        # fields += [f"time {dnnlib.util.format_time(training_stats.report0('Timing/total_sec', tick_end_time - start_time)):<12s}"]
+        # fields += [f"sec/tick {training_stats.report0('Timing/sec_per_tick', tick_end_time - tick_start_time):<7.1f}"]
+        # fields += [f"sec/kimg {training_stats.report0('Timing/sec_per_kimg', (tick_end_time - tick_start_time) / (cur_nimg - tick_start_nimg) * 1e3):<7.2f}"]
+        # fields += [f"maintenance {training_stats.report0('Timing/maintenance_sec', maintenance_time):<6.1f}"]
         fields += [f"cpumem {training_stats.report0('Resources/cpu_mem_gb', psutil.Process(os.getpid()).memory_info().rss / 2**30):<6.2f}"]
         fields += [f"gpumem {training_stats.report0('Resources/peak_gpu_mem_gb', torch.cuda.max_memory_allocated(device) / 2**30):<6.2f}"]
         fields += [f"reserved {training_stats.report0('Resources/peak_gpu_mem_reserved_gb', torch.cuda.max_memory_reserved(device) / 2**30):<6.2f}"]
         torch.cuda.reset_peak_memory_stats()
         fields += [f"augment {training_stats.report0('Progress/augment', float(augment_pipe.p.cpu()) if augment_pipe is not None else 0):.3f}"]
-        training_stats.report0('Timing/total_hours', (tick_end_time - start_time) / (60 * 60))
-        training_stats.report0('Timing/total_days', (tick_end_time - start_time) / (24 * 60 * 60))
+        # training_stats.report0('Timing/total_hours', (tick_end_time - start_time) / (60 * 60))
+        # training_stats.report0('Timing/total_days', (tick_end_time - start_time) / (24 * 60 * 60))
         if rank == 0:
             print(' '.join(fields))
 
@@ -529,12 +532,12 @@ def training_loop(
         del snapshot_data # conserve memory
 
         # Collect statistics.
-        for phase in phases:
-            value = []
-            if (phase.start_event is not None) and (phase.end_event is not None):
-                phase.end_event.synchronize()
-                value = phase.start_event.elapsed_time(phase.end_event)
-            training_stats.report0('Timing/' + phase.name, value)
+        # for phase in phases:
+        #     value = []
+        #     if (phase.start_event is not None) and (phase.end_event is not None):
+        #         phase.end_event.synchronize()
+        #         value = phase.start_event.elapsed_time(phase.end_event)
+        #     training_stats.report0('Timing/' + phase.name, value)
         stats_collector.update()
         stats_dict = stats_collector.as_dict()
 
