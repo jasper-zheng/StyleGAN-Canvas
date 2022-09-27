@@ -343,7 +343,7 @@ def training_loop(
     while True:
 
         # Grow skip connections
-        if (rank==0) and (connection_grow_kimg is not None) and (connection_grow_step is not None) and (cur_nimg > connection_grow_kimg*1000) and (cur_nimg % (connection_grow_step*1000) == 0) and (cur_nimg > 0) and (G_kwargs.connection_grow_from+1<G_kwargs.connection_end):
+        if (rank==0) and (connection_grow_kimg is not None) and (connection_grow_step is not None) and (cur_nimg >= connection_grow_kimg*1000) and (cur_nimg % (connection_grow_step*1000) == 0) and (cur_nimg > 0) and (G_kwargs.connection_grow_from+1<G_kwargs.connection_end):
           G_kwargs.connection_grow_from += 1
           print(f'Connection grows from {G_kwargs.connection_grow_from-1} -> {G_kwargs.connection_grow_from}')
           G_new = dnnlib.util.construct_class_by_name(**G_kwargs, **common_kwargs).train().requires_grad_(False).to(device) # subclass of torch.nn.Module
