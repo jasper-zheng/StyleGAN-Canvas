@@ -132,7 +132,7 @@ class AppendedNet(torch.nn.Module):
           self.skip_scale.append(scale)
 
           if idx in skip_channels_idx:
-            self.skip_down_channels.append(int(c//4))
+            self.skip_down_channels.append(int(c//2))
             self.skip_down_sizes.append(int(s))
             if skip_connection[count]:
                 self.skip_connection.append(1)
@@ -170,7 +170,26 @@ class AppendedNet(torch.nn.Module):
 
         down_channels = [c for c in self.skip_down_channels if c]
         count = 0
+        scale_flag = 0
+        self.in_scale = None
         for idx, (c,s,fp) in enumerate(zip(self.skip_down_channels, self.skip_down_sizes, layer_fp16)):
+          if self.skip_down_sizes[4] == 0 and scale_flag==0:
+            c_in = down_channels[0]
+            c_mid = down_channels[0]
+            c_out = down_channels[0]
+            scale_factor = 0.5
+            # padding = paddings if count>0 and self.skip_scale[idx] == 0.5 else 0
+            padding = paddings
+            layer = ResConvBlock(c_in, c_mid, c_out, kernel_size=3, paddings = padding, scale_factor = scale_factor, is_fp16 = fp)
+            # out_size = int(0.5*out_size) if count>0 else out_size
+            out_size = int(0.5*out_size)
+            # name = f'SCALE{idx}_R{out_size}_C{c_out}'
+            # self.down_names.append(name)
+            # name = "in_scale"
+            print("in_scale")
+            # setattr(self, name, layer)
+            self.in_scale = layer
+            scale_flag = 1
           if c and s:
             
             c_in = c if count == 0 else down_channels[count-1]
@@ -239,6 +258,10 @@ class AppendedNet(torch.nn.Module):
     # x = torch.nn.functional.pad(x,(10,10,10,10),mode='reflect')
     x = self.in_proj(x.to(torch.float16))
     skips = []
+    if self.in_scale is not None:
+        x = self.in_scale(x)
+        # print(f'-> {x.shape}')
+        # print("scale")
     for idx, (name, connect) in enumerate(zip(self.down_names,self.skip_connection)):
       if name:
         layer = getattr(self,name)
@@ -246,7 +269,6 @@ class AppendedNet(torch.nn.Module):
             skips.append(torch.nn.functional.pad(x,(layer.paddings,layer.paddings,layer.paddings,layer.paddings), mode='reflect'))
         else:
             skips.append(None)
-        # print(name)
         x = layer(x)
         # print(f'-> {x.shape}')
         # print(name)

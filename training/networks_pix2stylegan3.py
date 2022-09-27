@@ -455,7 +455,7 @@ class SynthesisNetwork(torch.nn.Module):
         count = 0
         for idx, (c, s) in enumerate(zip(self.channels, self.sizes)):
           if idx in skip_channels_idx:
-            self.skip_down_channels.append(int(c//4))
+            self.skip_down_channels.append(int(c//2))
             self.skip_down_sizes.append(int(s))
             if skip_connection[count]:
                 self.skip_connection.append(1)
@@ -555,7 +555,7 @@ class Generator(torch.nn.Module):
         img_resolution,             # Output resolution.
         img_channels,               # Number of output color channels.
         mapping_kwargs      = {},   # Arguments for MappingNetwork.
-        projecting_img_dim  = (1,512,512),
+        projecting_img_dim  = (3,256,256),
         # skip_channels_idx   = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
         # skip_connection     = [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
         # num_appended_ws     = 4,
