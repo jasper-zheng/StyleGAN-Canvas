@@ -155,8 +155,8 @@ def parse_comma_separated_list(s):
 @click.option('--connection-end',      help='idx of layer that skip connections end', metavar='INT', type=click.IntRange(min=0), default=12, show_default=True)
 @click.option('--connection-grow-from',help='grow skip connections from', metavar='INT', type=click.IntRange(min=0), default=4, show_default=True)
 @click.option('--replaced-ws',         help='encode the first N extended w+ latent space', metavar='INT', type=click.IntRange(min=0), default=6, show_default=True)
-@click.option('--connection-grow-kimg',help='grow connection after the first N kimg', metavar='INT', type=click.IntRange(min=0), default=192, show_default=True)
-@click.option('--connection-grow-step',help='grow connection after each N kimg', metavar='INT', type=click.IntRange(min=0), default=48, show_default=True)
+@click.option('--connection-grow-kimg',help='grow connection after the first N kimg', metavar='INT', type=click.IntRange(min=0), default=96, show_default=True)
+@click.option('--connection-grow-step',help='grow connection after each N kimg', metavar='INT', type=click.IntRange(min=0), default=96, show_default=True)
 
 # Misc settings.
 @click.option('--desc',         help='String to include in result dir name', metavar='STR',     type=str)
