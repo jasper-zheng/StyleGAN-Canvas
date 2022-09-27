@@ -71,12 +71,13 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 #----------------------------------------------------------------------------
 
 class Preprocess(torch.nn.Module):
-    def __init__(self, blur_sigma = 4, out_size = 512):
+    def __init__(self, blur_sigma = 19, scale_factor = 0.1, out_size = 256):
         super().__init__()
-        self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
+        # self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
         self.device = torch.device('cuda')
         self.blur_size = np.floor(blur_sigma * 3)
         self.blur_sigma = blur_sigma
+        self.scale_factor = scale_factor
         self.out_size = out_size
     @torch.no_grad()
     def preprocess_to_conditions(self, img_tensor):
@@ -86,13 +87,16 @@ class Preprocess(torch.nn.Module):
         return: 
             img_tensor: [-1,1]
         '''
-        img_tensor = torch.nn.functional.interpolate(img_tensor, size = (self.out_size,self.out_size))
+        
         with torch.autograd.profiler.record_function('blur'):
           f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
           img_tensor = upfirdn2d.filter2d(img_tensor, f / f.sum())
         
-        img_tensor = self.filter(img_tensor*0.5+1).clamp(0,1)*2-1
+#         img_tensor = self.filter(img_tensor*0.5+1).clamp(0,1)*2-1
         # print(img_tensor.shape)
+    
+        # img_tensor = torch.nn.functional.interpolate(img_tensor, scale_factor = self.scale_factor)
+        # img_tensor = torch.nn.functional.interpolate(img_tensor, size = (self.out_size,self.out_size), mode='bilinear')
         return img_tensor
         
 
@@ -167,6 +171,7 @@ def training_loop(
     cudnn_benchmark         = True,     # Enable torch.backends.cudnn.benchmark?
     abort_fn                = None,     # Callback function for determining whether to abort training. Must return consistent results across ranks.
     progress_fn             = None,     # Callback function for updating training progress. Called for all ranks.
+    train_affine_layer      = False
 ):
     # Initialize.
     start_time = time.time()
@@ -338,7 +343,7 @@ def training_loop(
     while True:
 
         # Grow skip connections
-        if (rank==0) and (connection_grow_kimg is not None) and (connection_grow_step is not None) and (cur_nimg % (connection_grow_step*1000) == 0) and (cur_nimg > 0) and (G_kwargs.connection_grow_from+1<G_kwargs.connection_end):
+        if (rank==0) and (connection_grow_kimg is not None) and (connection_grow_step is not None) and (cur_nimg > connection_grow_kimg*1000) and (cur_nimg % (connection_grow_step*1000) == 0) and (cur_nimg > 0) and (G_kwargs.connection_grow_from+1<G_kwargs.connection_end):
           G_kwargs.connection_grow_from += 1
           print(f'Connection grows from {G_kwargs.connection_grow_from-1} -> {G_kwargs.connection_grow_from}')
           G_new = dnnlib.util.construct_class_by_name(**G_kwargs, **common_kwargs).train().requires_grad_(False).to(device) # subclass of torch.nn.Module
@@ -418,7 +423,7 @@ def training_loop(
             phase.opt.zero_grad(set_to_none=True)
             phase.module.requires_grad_(True)
             for i, (real_img, cond_img, real_c, gen_z, gen_c) in enumerate(zip(phase_real_img, phase_cond_imgs, phase_real_c, phase_gen_z, phase_gen_c)):
-                loss.accumulate_gradients(phase=phase.name, real_img=real_img, cond_img=cond_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg, mute = False if i==0 and batch_idx%10==0 else True, grid_size = grid_size)
+                loss.accumulate_gradients(phase=phase.name, real_img=real_img, cond_img=cond_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg, mute = False if i==0 and batch_idx%10==0 else True, grid_size = grid_size, train_affine = train_affine_layer)
             phase.module.requires_grad_(False)
 
             # Update weights.
@@ -471,17 +476,17 @@ def training_loop(
         fields = []
         fields += [f"tick {training_stats.report0('Progress/tick', cur_tick):<5d}"]
         fields += [f"kimg {training_stats.report0('Progress/kimg', cur_nimg / 1e3):<8.1f}"]
-        fields += [f"time {dnnlib.util.format_time(training_stats.report0('Timing/total_sec', tick_end_time - start_time)):<12s}"]
-        fields += [f"sec/tick {training_stats.report0('Timing/sec_per_tick', tick_end_time - tick_start_time):<7.1f}"]
-        fields += [f"sec/kimg {training_stats.report0('Timing/sec_per_kimg', (tick_end_time - tick_start_time) / (cur_nimg - tick_start_nimg) * 1e3):<7.2f}"]
-        fields += [f"maintenance {training_stats.report0('Timing/maintenance_sec', maintenance_time):<6.1f}"]
+        # fields += [f"time {dnnlib.util.format_time(training_stats.report0('Timing/total_sec', tick_end_time - start_time)):<12s}"]
+        # fields += [f"sec/tick {training_stats.report0('Timing/sec_per_tick', tick_end_time - tick_start_time):<7.1f}"]
+        # fields += [f"sec/kimg {training_stats.report0('Timing/sec_per_kimg', (tick_end_time - tick_start_time) / (cur_nimg - tick_start_nimg) * 1e3):<7.2f}"]
+        # fields += [f"maintenance {training_stats.report0('Timing/maintenance_sec', maintenance_time):<6.1f}"]
         fields += [f"cpumem {training_stats.report0('Resources/cpu_mem_gb', psutil.Process(os.getpid()).memory_info().rss / 2**30):<6.2f}"]
         fields += [f"gpumem {training_stats.report0('Resources/peak_gpu_mem_gb', torch.cuda.max_memory_allocated(device) / 2**30):<6.2f}"]
         fields += [f"reserved {training_stats.report0('Resources/peak_gpu_mem_reserved_gb', torch.cuda.max_memory_reserved(device) / 2**30):<6.2f}"]
         torch.cuda.reset_peak_memory_stats()
         fields += [f"augment {training_stats.report0('Progress/augment', float(augment_pipe.p.cpu()) if augment_pipe is not None else 0):.3f}"]
-        training_stats.report0('Timing/total_hours', (tick_end_time - start_time) / (60 * 60))
-        training_stats.report0('Timing/total_days', (tick_end_time - start_time) / (24 * 60 * 60))
+        # training_stats.report0('Timing/total_hours', (tick_end_time - start_time) / (60 * 60))
+        # training_stats.report0('Timing/total_days', (tick_end_time - start_time) / (24 * 60 * 60))
         if rank == 0:
             print(' '.join(fields))
 
@@ -530,12 +535,12 @@ def training_loop(
         del snapshot_data # conserve memory
 
         # Collect statistics.
-        for phase in phases:
-            value = []
-            if (phase.start_event is not None) and (phase.end_event is not None):
-                phase.end_event.synchronize()
-                value = phase.start_event.elapsed_time(phase.end_event)
-            training_stats.report0('Timing/' + phase.name, value)
+        # for phase in phases:
+        #     value = []
+        #     if (phase.start_event is not None) and (phase.end_event is not None):
+        #         phase.end_event.synchronize()
+        #         value = phase.start_event.elapsed_time(phase.end_event)
+        #     training_stats.report0('Timing/' + phase.name, value)
         stats_collector.update()
         stats_dict = stats_collector.as_dict()
 
