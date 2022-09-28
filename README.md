@@ -1,5 +1,7 @@
 # Pixel2StyleGAN3  
 
+Extending StyleGAN3 to Image-to-Image Translation
+
 <table> 
   <tr>
     <td> <img src='./docs/demo_imgs/1_cond.png'></td>
