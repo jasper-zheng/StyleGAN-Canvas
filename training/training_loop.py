@@ -171,7 +171,8 @@ def training_loop(
     cudnn_benchmark         = True,     # Enable torch.backends.cudnn.benchmark?
     abort_fn                = None,     # Callback function for determining whether to abort training. Must return consistent results across ranks.
     progress_fn             = None,     # Callback function for updating training progress. Called for all ranks.
-    train_affine_layer      = False
+    train_affine_layer      = False,
+    switch_to_vgg           = 192
 ):
     # Initialize.
     start_time = time.time()
@@ -410,7 +411,7 @@ def training_loop(
             all_gen_c = torch.from_numpy(np.stack(all_gen_c)).pin_memory().to(device)
             all_gen_c = [phase_gen_c.split(batch_gpu) for phase_gen_c in all_gen_c.split(batch_size)]
 
-
+        use_vgg = True if (cur_nimg > switch_to_vgg * 1000) else False
 
         # Execute training phases. ##########################
         for phase, phase_gen_z, phase_gen_c in zip(phases, all_gen_z, all_gen_c):
@@ -423,7 +424,7 @@ def training_loop(
             phase.opt.zero_grad(set_to_none=True)
             phase.module.requires_grad_(True)
             for i, (real_img, cond_img, real_c, gen_z, gen_c) in enumerate(zip(phase_real_img, phase_cond_imgs, phase_real_c, phase_gen_z, phase_gen_c)):
-                loss.accumulate_gradients(phase=phase.name, real_img=real_img, cond_img=cond_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg, mute = False if i==0 and batch_idx%10==0 else True, grid_size = grid_size, train_affine = train_affine_layer)
+                loss.accumulate_gradients(phase=phase.name, real_img=real_img, cond_img=cond_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg, mute = False if i==0 and batch_idx%10==0 else True, grid_size = grid_size, train_affine = train_affine_layer, use_vgg=use_vgg)
             phase.module.requires_grad_(False)
 
             # Update weights.

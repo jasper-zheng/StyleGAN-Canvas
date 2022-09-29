@@ -60,11 +60,7 @@ class StyleGAN2Loss(Loss):
         self.pl_mean            = torch.zeros([], device=device)
         self.blur_init_sigma    = blur_init_sigma
         self.blur_fade_kimg     = blur_fade_kimg
-        if vggloss:
-          self.vgg_loss         = VGGLoss()
-          print('use vgg loss')
-        else:
-          self.vgg_loss         = None
+        self.vgg_loss           = VGGLoss()
 
     def run_G(self, z, c, cond_img = None, update_emas=False):
         # skips_out = reversed(self.G.appended_net(cond_img)) if cond_img is not None else None
@@ -123,7 +119,7 @@ class StyleGAN2Loss(Loss):
           p.requires_grad_(False)
 
 
-    def accumulate_gradients(self, phase, real_img, cond_img, real_c, gen_z, gen_c, gain, cur_nimg, mute = True, grid_size = None, train_affine = False):
+    def accumulate_gradients(self, phase, real_img, cond_img, real_c, gen_z, gen_c, gain, cur_nimg, mute = True, grid_size = None, train_affine = False, use_vgg=False):
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
         if train_affine:
           self.freeze_for_affine()
@@ -146,7 +142,7 @@ class StyleGAN2Loss(Loss):
                 loss_Gmain = torch.nn.functional.softplus(-gen_logits).mean() # -log(sigmoid(gen_logits))
 
                 # loss_Gtarget = torch.nn.functional.mse_loss(gen_img, real_img_tmp)
-                if self.vgg_loss is not None:
+                if use_vgg:
                   loss_Gtarget = self.run_vgg_loss(gen_img, real_img_tmp, blur_sigma=blur_sigma)
                 else:
                   loss_Gtarget = self.run_mse(gen_img, real_img_tmp, blur_sigma=blur_sigma)
@@ -156,7 +152,7 @@ class StyleGAN2Loss(Loss):
                     if not mute:
                         print(f'target_err: {loss_Gtarget.item():.6}')
                 else:
-                    loss_Gnet = loss_Gmain*0.8 + loss_Gtarget*0.5
+                    loss_Gnet = loss_Gmain*0.8 + loss_Gtarget*0.3
                 # loss_Gnet = (loss_Gmain * 0.1 + loss_Gtarget * 2.2).clamp(0,3)
                 # loss_Gnet = (loss_Gmain * 0.6 + loss_Gtarget * 0.3).clamp(0,3)
                 # loss_Gnet = (loss_Gmain * 0.8 + loss_Gtarget * 0.2).clamp(0,3)
@@ -165,7 +161,10 @@ class StyleGAN2Loss(Loss):
                 
                 
                     if not mute:
-                      print(f'net_err: {loss_Gnet.item():.6}\t main_err: {loss_Gmain.item():.6}\t target_err: {loss_Gtarget.item():.6}')
+                      if use_vgg:
+                        print(f'net_err: {loss_Gnet.item():.6}\t main_err: {loss_Gmain.item():.6}\t vgg_err: {loss_Gtarget.item():.6}')
+                      else:
+                        print(f'net_err: {loss_Gnet.item():.6}\t main_err: {loss_Gmain.item():.6}\t target_err: {loss_Gtarget.item():.6}')
 
                 training_stats.report('Loss/G/loss', loss_Gnet)
             with torch.autograd.profiler.record_function('Gmain_backward'):

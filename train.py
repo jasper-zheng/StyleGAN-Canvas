@@ -135,6 +135,7 @@ def parse_comma_separated_list(s):
 @click.option('--cond',         help='Train conditional model', metavar='BOOL',                 type=bool, default=False, show_default=True)
 @click.option('--mirror',       help='Enable dataset x-flips', metavar='BOOL',                  type=bool, default=False, show_default=True)
 @click.option('--vggloss',      help='Enable VGG loss', metavar='BOOL',                         type=bool, default=True, show_default=True)
+@click.option('--switch-to-vgg',help='Switch to VGG loss after N kimg', metavar='Int',          type=click.IntRange(min=0), default=192, show_default=True)
 @click.option('--aug',          help='Augmentation mode',                                       type=click.Choice(['noaug', 'ada', 'fixed']), default='ada', show_default=True)
 @click.option('--resume',       help='Resume from given network pickle', metavar='[PATH|URL]',  type=str)
 @click.option('--resume-kimg',  help='Resume form kimg', metavar='INT',                         type=click.IntRange(min=0))
@@ -156,7 +157,7 @@ def parse_comma_separated_list(s):
 @click.option('--connection-end',      help='idx of layer that skip connections end', metavar='INT', type=click.IntRange(min=0), default=12, show_default=True)
 @click.option('--connection-grow-from',help='grow skip connections from', metavar='INT', type=click.IntRange(min=0), default=4, show_default=True)
 @click.option('--replaced-ws',         help='encode the first N extended w+ latent space', metavar='INT', type=click.IntRange(min=0), default=6, show_default=True)
-@click.option('--connection-grow-kimg',help='grow connection after the first N kimg', metavar='INT', type=click.IntRange(min=0), default=96, show_default=True)
+@click.option('--connection-grow-kimg',help='grow connection after the first N kimg', metavar='INT', type=click.IntRange(min=0), default=92, show_default=True)
 @click.option('--connection-grow-step',help='grow connection after each N kimg', metavar='INT', type=click.IntRange(min=0), default=96, show_default=True)
 
 # Misc settings.
@@ -226,6 +227,7 @@ def main(**kwargs):
     c.D_opt_kwargs.lr = opts.dlr
     c.metrics = opts.metrics
     c.total_kimg = opts.kimg
+    c.switch_to_vgg = opts.switch_to_vgg
     c.kimg_per_tick = opts.tick
     c.image_snapshot_ticks = c.network_snapshot_ticks = opts.snap
     c.random_seed = c.training_set_kwargs.random_seed = opts.seed
@@ -266,7 +268,7 @@ def main(**kwargs):
             c.G_kwargs.use_radial_filters = True # Use radially symmetric downsampling filters.
             c.loss_kwargs.blur_init_sigma = 10 # Blur the images seen by the discriminator.
             # c.loss_kwargs.blur_fade_kimg = c.batch_size * 200 / 32 # Fade out the blur during the first N kimg.
-            c.loss_kwargs.blur_fade_kimg = c.batch_size * 300 / 32 # Fade out the blur during the first N kimg.
+            c.loss_kwargs.blur_fade_kimg = c.batch_size * 400 / 32 # Fade out the blur during the first N kimg.
         if opts.cfg == 'stylegan3-r':
             c.G_kwargs.conv_kernel = 1 # Use 1x1 convolutions.
             c.G_kwargs.channel_base *= 2 # Double the number of feature maps.
@@ -292,9 +294,9 @@ def main(**kwargs):
     if opts.resume is not None:
         c.resume_pkl = opts.resume
         c.resume_kimg = opts.resume_kimg
-        c.ada_kimg = 100 # Make ADA react faster at the beginning.
-        c.ema_rampup = None # Disable EMA rampup.
-        c.loss_kwargs.blur_init_sigma = 0 # Disable blur rampup.
+        # c.ada_kimg = 100 # Make ADA react faster at the beginning.
+        # c.ema_rampup = None # Disable EMA rampup.
+        c.loss_kwargs.blur_init_sigma = 10 # Disable blur rampup.
 
 
     # Performance-related toggles.
