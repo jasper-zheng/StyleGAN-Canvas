@@ -172,7 +172,9 @@ def training_loop(
     abort_fn                = None,     # Callback function for determining whether to abort training. Must return consistent results across ranks.
     progress_fn             = None,     # Callback function for updating training progress. Called for all ranks.
     train_affine_layer      = False,
-    switch_to_vgg           = 192
+    switch_to_vgg           = 192,
+    gan_factor              = 0.3,
+    target_factor           = 0.8,
 ):
     # Initialize.
     start_time = time.time()
@@ -424,7 +426,7 @@ def training_loop(
             phase.opt.zero_grad(set_to_none=True)
             phase.module.requires_grad_(True)
             for i, (real_img, cond_img, real_c, gen_z, gen_c) in enumerate(zip(phase_real_img, phase_cond_imgs, phase_real_c, phase_gen_z, phase_gen_c)):
-                loss.accumulate_gradients(phase=phase.name, real_img=real_img, cond_img=cond_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg, mute = False if i==0 and batch_idx%10==0 else True, grid_size = grid_size, train_affine = train_affine_layer, use_vgg=use_vgg, gan_factor=0.6, target_factor=0.8)
+                loss.accumulate_gradients(phase=phase.name, real_img=real_img, cond_img=cond_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg, mute = False if i==0 and batch_idx%10==0 else True, grid_size = grid_size, train_affine = train_affine_layer, use_vgg=use_vgg, gan_factor=gan_factor, target_factor=target_factor)
             phase.module.requires_grad_(False)
 
             # Update weights.

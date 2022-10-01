@@ -136,6 +136,9 @@ def parse_comma_separated_list(s):
 @click.option('--mirror',       help='Enable dataset x-flips', metavar='BOOL',                  type=bool, default=False, show_default=True)
 @click.option('--vggloss',      help='Enable VGG loss', metavar='BOOL',                         type=bool, default=True, show_default=True)
 @click.option('--switch-to-vgg',help='Switch to VGG loss after N kimg', metavar='Int',          type=click.IntRange(min=0), default=384, show_default=True)
+@click.option('--gan-loss',     help='gan loss', metavar='FLOAT',                               type=click.FloatRange(min=0), default=0.3, show_default=True)
+@click.option('--target-loss',     help='target loss', metavar='FLOAT',                         type=click.FloatRange(min=0), default=0.9, show_default=True)
+
 @click.option('--aug',          help='Augmentation mode',                                       type=click.Choice(['noaug', 'ada', 'fixed']), default='ada', show_default=True)
 @click.option('--resume',       help='Resume from given network pickle', metavar='[PATH|URL]',  type=str)
 @click.option('--resume-kimg',  help='Resume form kimg', metavar='INT',                         type=click.IntRange(min=0))
@@ -228,6 +231,8 @@ def main(**kwargs):
     c.metrics = opts.metrics
     c.total_kimg = opts.kimg
     c.switch_to_vgg = opts.switch_to_vgg
+    c.gan_factor = opts.gan_factor
+    c.target_factor = opts.target_factor
     c.kimg_per_tick = opts.tick
     c.image_snapshot_ticks = c.network_snapshot_ticks = opts.snap
     c.random_seed = c.training_set_kwargs.random_seed = opts.seed
