@@ -65,7 +65,7 @@ class StyleGAN2Loss(Loss):
     def run_G(self, z, c, cond_img = None, update_emas=False):
         # skips_out = reversed(self.G.appended_net(cond_img)) if cond_img is not None else None
         skips_out, replaced_w = self.G.appended_net(cond_img)
-        skips_out = reversed(skips_out)
+        skips_out.reverse()
 
         ws = self.G.mapping(z, c, update_emas=update_emas)
         if self.style_mixing_prob > 0:
@@ -119,7 +119,7 @@ class StyleGAN2Loss(Loss):
           p.requires_grad_(False)
 
 
-    def accumulate_gradients(self, phase, real_img, cond_img, real_c, gen_z, gen_c, gain, cur_nimg, mute = True, grid_size = None, train_affine = False, use_vgg=False):
+    def accumulate_gradients(self, phase, real_img, cond_img, real_c, gen_z, gen_c, gain, cur_nimg, mute = True, grid_size = None, train_affine = False, use_vgg=False, gan_factor=0.6, target_factor=0.8):
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
         if train_affine:
           self.freeze_for_affine()
@@ -152,7 +152,7 @@ class StyleGAN2Loss(Loss):
                     if not mute:
                         print(f'target_err: {loss_Gtarget.item():.6}')
                 else:
-                    loss_Gnet = loss_Gmain*0.8 + loss_Gtarget*0.3
+                    loss_Gnet = loss_Gmain*gan_factor + loss_Gtarget*target_factor
                 # loss_Gnet = (loss_Gmain * 0.1 + loss_Gtarget * 2.2).clamp(0,3)
                 # loss_Gnet = (loss_Gmain * 0.6 + loss_Gtarget * 0.3).clamp(0,3)
                 # loss_Gnet = (loss_Gmain * 0.8 + loss_Gtarget * 0.2).clamp(0,3)

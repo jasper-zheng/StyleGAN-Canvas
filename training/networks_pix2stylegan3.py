@@ -18,7 +18,7 @@ from torch_utils import persistence
 from torch_utils.ops import conv2d_gradfix
 from torch_utils.ops import filtered_lrelu
 from torch_utils.ops import bias_act
-from training.appended_net import AppendedNet
+from training.appended_net_v2 import AppendedNet
 
 #----------------------------------------------------------------------------
 
@@ -325,6 +325,7 @@ class SynthesisLayer(torch.nn.Module):
         pad_total += self.up_taps + self.down_taps - 2 # Size reduction caused by the filters.
         pad_lo = (pad_total + self.up_factor) // 2 # Shift sample locations according to the symmetric interpretation (Appendix C.3).
         pad_hi = pad_total - pad_lo
+        self.pad_hi = int(pad_hi[0])
         self.padding = [int(pad_lo[0]), int(pad_hi[0]), int(pad_lo[1]), int(pad_hi[1])]
 
     def forward(self, x, w, noise_mode='random', force_fp32=False, update_emas=False):
@@ -414,9 +415,12 @@ class SynthesisNetwork(torch.nn.Module):
         margin_size         = 10,       # Number of additional pixels outside the image.
         output_scale        = 0.25,     # Scale factor for the output image.
         num_fp16_res        = 4,        # Use FP16 for the N highest resolutions.
-        skip_channels_idx   = [0, 3, 6, 7, 10],
-        skip_connection     = [0, 0, 0, 0,  0],
-        **layer_kwargs,                 # Arguments for SynthesisLayer.
+
+        # skip_channels_idx   = [0, 3, 6, 7, 10],
+        # skip_connection     = [0, 0, 0, 0,  0],
+        encoder_receive     = [],
+        encoder_receive_c   = [],
+        **layer_kwargs                 # Arguments for SynthesisLayer.
     ):
         super().__init__()
         self.w_dim = w_dim
@@ -428,7 +432,7 @@ class SynthesisNetwork(torch.nn.Module):
         self.margin_size = margin_size
         self.output_scale = output_scale
         self.num_fp16_res = num_fp16_res
-        self.skip_channels_idx = skip_channels_idx
+        # self.skip_channels_idx = skip_channels_idx
         # self.skip_connection = skip_connection
 
         # Geometric progression of layer cutoffs and min. stopbands.
@@ -449,26 +453,28 @@ class SynthesisNetwork(torch.nn.Module):
         self.channels = channels
 
         # Compute the skip channels
-        self.skip_down_channels = []
-        self.skip_down_sizes = []
-        self.skip_connection = []
-        count = 0
-        for idx, (c, s) in enumerate(zip(self.channels, self.sizes)):
-          if idx in skip_channels_idx:
-            self.skip_down_channels.append(int(c//2))
-            self.skip_down_sizes.append(int(s))
-            if skip_connection[count]:
-                self.skip_connection.append(1)
-            else:
-                self.skip_connection.append(0)
-            count += 1
-          else:
-            self.skip_down_channels.append(0)
-            self.skip_down_sizes.append(0)
-            self.skip_connection.append(0)
+        # self.skip_down_channels = []
+        # self.skip_down_sizes = []
+        # self.skip_connection = []
+        # count = 0
+        # for idx, (c, s) in enumerate(zip(self.channels, self.sizes)):
+        #   if idx in skip_channels_idx:
+        #     self.skip_down_channels.append(int(c//2))
+        #     self.skip_down_sizes.append(int(s))
+        #     if skip_connection[count]:
+        #         self.skip_connection.append(1)
+        #     else:
+        #         self.skip_connection.append(0)
+        #     count += 1
+        #   else:
+        #     self.skip_down_channels.append(0)
+        #     self.skip_down_sizes.append(0)
+        #     self.skip_connection.append(0)
 
-        assert len(self.skip_down_channels) == len(self.skip_down_sizes), f'whatt???? \n{self.skip_down_channels}\n{self.skip_down_sizes}'
-
+        # assert len(self.skip_down_channels) == len(self.skip_down_sizes), f'whatt???? \n{self.skip_down_channels}\n{self.skip_down_sizes}'
+        print('hiiii generator')
+        print(encoder_receive)
+        print(encoder_receive_c)
 
         # Construct layers.
         self.input = SynthesisInput(
@@ -476,23 +482,34 @@ class SynthesisNetwork(torch.nn.Module):
             sampling_rate=sampling_rates[0], bandwidth=cutoffs[0])
         self.layer_names = []
         self.layer_fp16 = []
+
+        assert len(encoder_receive) == self.num_layers + 1
+        assert len(encoder_receive_c) == self.num_layers + 1
+        encoder_receive.reverse()
+        encoder_receive_c.reverse()
+        self.encoder_receive = encoder_receive
+
         for idx in range(self.num_layers + 1):
             prev = max(idx - 1, 0)
             is_torgb = (idx == self.num_layers)
             is_critically_sampled = (idx >= self.num_layers - self.num_critical)
             use_fp16 = (sampling_rates[idx] * (2 ** self.num_fp16_res) > self.img_resolution)
             self.layer_fp16.append(use_fp16)
+
             # if idx-1 in skip_channels_idx:
             #   c_in = int(channels[prev]//2) + int(channels[prev])
             # else:
             # c_in = int(channels[prev]) + 
-            if idx == 0:
-              c_in = int(channels[prev])
-            elif self.skip_connection[prev]:
-              c_in = int(channels[prev])+self.skip_down_channels[idx]
-            else:
-              c_in = int(channels[prev])
+            # if idx == 0:
+            #   c_in = int(channels[prev])
+            # elif self.skip_connection[prev]:
+            #   c_in = int(channels[prev])+self.skip_down_channels[idx]
+            # else:
+            #   c_in = int(channels[prev])
             # print(f'c_in: {c_in}')
+            c_in = int(channels[prev]) + encoder_receive_c[idx]
+
+
             layer = SynthesisLayer(
                 w_dim=self.w_dim, is_torgb=is_torgb, is_critically_sampled=is_critically_sampled, use_fp16=use_fp16,
                 in_channels=c_in, out_channels= int(channels[idx]),
@@ -510,25 +527,30 @@ class SynthesisNetwork(torch.nn.Module):
         misc.assert_shape(ws, [None, self.num_ws, self.w_dim])
         ws = ws.to(torch.float32).unbind(dim=1)
         replaced_w = replaced_w.to(torch.float32).unbind(dim=1)
+        
         # Execute layers.
         x = self.input(ws[0]) if len(replaced_w) == 0 else self.input(replaced_w[0])
+
         if skips is None:
-          skips = [None for _ in self.layer_names]
+          assert False, 'missing skip inputs'
 
         # print(len(self.layer_names))
         # print(len(ws[1:]))
         # print(len(skips))
-        for idx, (name, w, skip) in enumerate(zip(self.layer_names, ws[1:], skips)):
+        for idx, (name, w, s) in enumerate(zip(self.layer_names, ws[1:], self.encoder_receive)):
             # print(name)
             # print(x.shape)
-            if idx < len(replaced_w[1:]):
-              x = getattr(self, name)(x, replaced_w[1:][idx], **layer_kwargs)
-            else:
-              x = getattr(self, name)(x, w, **layer_kwargs)
-            if skip is not None:
+            layer = getattr(self, name)
+            if s:
               # print(f'x: {x.shape}')
               # print(f's: {skip.shape}')
-              x = torch.cat([x,skip],dim=1)
+              concat = torch.nn.functional.pad(skips[s-1],(10,10,10,10), mode='reflect')
+              x = torch.cat([x,concat],dim=1)
+            if idx < len(replaced_w[1:]):
+              x = layer(x, replaced_w[1:][idx], **layer_kwargs)
+            else:
+              x = layer(x, w, **layer_kwargs)
+            
         if self.output_scale != 1:
             x = x * self.output_scale
 
@@ -536,6 +558,9 @@ class SynthesisNetwork(torch.nn.Module):
         misc.assert_shape(x, [None, self.img_channels, self.img_resolution, self.img_resolution])
         x = x.to(torch.float32)
         return x
+
+    def set_receive(self, r):
+      self.encoder_receive = r
 
     def extra_repr(self):
         return '\n'.join([
@@ -556,9 +581,14 @@ class Generator(torch.nn.Module):
         img_channels,               # Number of output color channels.
         mapping_kwargs      = {},   # Arguments for MappingNetwork.
         projecting_img_dim  = (3,256,256),
-        # skip_channels_idx   = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        # skip_connection     = [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
-        # num_appended_ws     = 4,
+
+        g_channels_res     = [256, 256, 256, 256, 256, 128, 128, 128, 64, 64, 32, 32, 16, 16, 16],
+        encoder_out_res    = [128, 64, 64, 32, 32, 16, 16,  8,  4],
+        encoder_channels   = [ 64, 64,128,256,256,512,512,512,512],
+        encoder_connect_to = [  0,  0,  0,  4,  3,  2,  1,  0,  0],
+        encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  4,  3,  2,  1,  0,  0],
+        encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,  0,256,512,512,512,  0,  0],
+
         connection_start        = 0,
         connection_end          = 11,
         connection_grow_from    = 4,
@@ -566,10 +596,10 @@ class Generator(torch.nn.Module):
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
-        skip_channels_idx = np.arange(connection_start,connection_end,1,dtype=int).tolist()
-        skip_connection = np.zeros(connection_end - connection_start, dtype=int)
-        skip_connection[:connection_grow_from] = 1
-        skip_connection = skip_connection.tolist()
+        # skip_channels_idx = np.arange(connection_start,connection_end,1,dtype=int).tolist()
+        # skip_connection = np.zeros(connection_end - connection_start, dtype=int)
+        # skip_connection[:connection_grow_from] = 1
+        # skip_connection = skip_connection.tolist()
         # print(skip_channels_idx)
         # print(skip_connection)
         self.z_dim = z_dim
@@ -581,16 +611,36 @@ class Generator(torch.nn.Module):
         assert len(projecting_img_dim)==3, f'projecting_img_dim takes image dim as tuple like (3, 256, 256)'
         self.p_size = projecting_img_dim[1]
         self.p_channel = projecting_img_dim[0]
-        self.synthesis = SynthesisNetwork(w_dim=w_dim, img_resolution=img_resolution, img_channels=img_channels, skip_channels_idx=skip_channels_idx, skip_connection=skip_connection, **synthesis_kwargs)
+        self.synthesis = SynthesisNetwork(w_dim=w_dim, 
+                                          img_resolution=img_resolution, 
+                                          img_channels=img_channels, 
+                                          # skip_channels_idx=skip_channels_idx, 
+                                          # skip_connection=skip_connection, 
+                                          encoder_receive = encoder_receive,
+                                          encoder_receive_c = encoder_receive_c,
+                                          **synthesis_kwargs)
         self.num_ws = self.synthesis.num_ws
-        self.mapping = MappingNetwork(z_dim=z_dim, c_dim=c_dim, w_dim=w_dim, num_ws=self.num_ws, **mapping_kwargs)
-        self.appended_net = AppendedNet(self.synthesis.channels, self.synthesis.sizes, self.p_dim, skip_channels_idx, skip_connection, self.synthesis.layer_fp16, num_appended_ws = num_appended_ws)
+        self.mapping = MappingNetwork(z_dim=z_dim, 
+                                      c_dim=c_dim, 
+                                      w_dim=w_dim, 
+                                      num_ws=self.num_ws, 
+                                      **mapping_kwargs)
+        self.appended_net = AppendedNet(self.synthesis.channels, 
+                                        self.synthesis.sizes, 
+                                        self.p_dim, 
+                                        encoder_out_res, 
+                                        encoder_channels, 
+                                        encoder_connect_to, 
+                                        self.synthesis.layer_fp16, 
+                                        num_appended_ws)
+
 
     def forward(self, z, c, skips_in, truncation_psi=1, truncation_cutoff=None, update_emas=False, **synthesis_kwargs):
         # print(skips_in.shape)
         skips_out, replaced_w = self.appended_net(skips_in)
         # print(len(skips_out))
-        skips_out = reversed(skips_out)
+        # skips_out = reversed(skips_out)
+        skips_out.reverse()
         # skips_out = reversed(self.appended_net(skips_in)) if not skips_in==None else None
 
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)

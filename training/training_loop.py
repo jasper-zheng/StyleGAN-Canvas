@@ -71,7 +71,7 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 #----------------------------------------------------------------------------
 
 class Preprocess(torch.nn.Module):
-    def __init__(self, blur_sigma = 19, scale_factor = 0.1, out_size = 256):
+    def __init__(self, blur_sigma = 13, scale_factor = 0.1, out_size = 256):
         super().__init__()
         # self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
         self.device = torch.device('cuda')
@@ -424,7 +424,7 @@ def training_loop(
             phase.opt.zero_grad(set_to_none=True)
             phase.module.requires_grad_(True)
             for i, (real_img, cond_img, real_c, gen_z, gen_c) in enumerate(zip(phase_real_img, phase_cond_imgs, phase_real_c, phase_gen_z, phase_gen_c)):
-                loss.accumulate_gradients(phase=phase.name, real_img=real_img, cond_img=cond_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg, mute = False if i==0 and batch_idx%10==0 else True, grid_size = grid_size, train_affine = train_affine_layer, use_vgg=use_vgg)
+                loss.accumulate_gradients(phase=phase.name, real_img=real_img, cond_img=cond_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg, mute = False if i==0 and batch_idx%10==0 else True, grid_size = grid_size, train_affine = train_affine_layer, use_vgg=use_vgg, gan_factor=0.6, target_factor=0.8)
             phase.module.requires_grad_(False)
 
             # Update weights.
