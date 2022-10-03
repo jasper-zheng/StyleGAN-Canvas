@@ -20,6 +20,8 @@ from torch_utils.ops import filtered_lrelu
 from torch_utils.ops import bias_act
 from training.appended_net_v2 import AppendedNet
 
+from torchvision.transforms.functional import gaussian_blur
+
 #----------------------------------------------------------------------------
 
 @misc.profiled_function
@@ -248,6 +250,25 @@ class SynthesisInput(torch.nn.Module):
             f'w_dim={self.w_dim:d}, channels={self.channels:d}, size={list(self.size)},',
             f'sampling_rate={self.sampling_rate:g}, bandwidth={self.bandwidth:g}'])
 
+
+@persistence.persistent_class
+class CondSynthesisInput(torch.nn.Module):
+    def __init__(self,
+        w_dim,          # Intermediate latent (W) dimensionality.
+        channels,       # Number of output channels.
+        in_size,
+        out_size            # Output spatial size: int or [width, height].
+    ):
+        super().__init__()
+        self.w_dim = w_dim
+        self.conv = torch.nn.Conv2d(channels,channels,1,padding=0)
+        self.padding = int((out_size - in_size)/2)
+    
+    def forward(self,x):
+        x = self.conv(x)
+        x = torch.nn.functional.pad(x,(self.padding,self.padding,self.padding,self.padding), mode='reflect')
+        return x
+
 #----------------------------------------------------------------------------
 
 @persistence.persistent_class
@@ -399,6 +420,22 @@ class SynthesisLayer(torch.nn.Module):
 
 #----------------------------------------------------------------------------
 
+
+# @persistence.persistent_class
+# class SkipConcatLayer(torch.nn.Module):
+#     def __init__(self,
+#         use_fp16                       # Does this layer use FP16?
+#     ):
+#         super().__init__()
+#         self.use_fp16 = use_fp16
+
+#     def forward(self,x):
+
+#         x = 
+        
+#         return x
+#----------------------------------------------------------------------------
+
 @persistence.persistent_class
 class SynthesisNetwork(torch.nn.Module):
     def __init__(self,
@@ -420,6 +457,7 @@ class SynthesisNetwork(torch.nn.Module):
         # skip_connection     = [0, 0, 0, 0,  0],
         encoder_receive     = [],
         encoder_receive_c   = [],
+        bottleneck_size     = 16,
         **layer_kwargs                 # Arguments for SynthesisLayer.
     ):
         super().__init__()
@@ -452,34 +490,19 @@ class SynthesisNetwork(torch.nn.Module):
         channels[-1] = self.img_channels
         self.channels = channels
 
-        # Compute the skip channels
-        # self.skip_down_channels = []
-        # self.skip_down_sizes = []
-        # self.skip_connection = []
-        # count = 0
-        # for idx, (c, s) in enumerate(zip(self.channels, self.sizes)):
-        #   if idx in skip_channels_idx:
-        #     self.skip_down_channels.append(int(c//2))
-        #     self.skip_down_sizes.append(int(s))
-        #     if skip_connection[count]:
-        #         self.skip_connection.append(1)
-        #     else:
-        #         self.skip_connection.append(0)
-        #     count += 1
-        #   else:
-        #     self.skip_down_channels.append(0)
-        #     self.skip_down_sizes.append(0)
-        #     self.skip_connection.append(0)
-
         # assert len(self.skip_down_channels) == len(self.skip_down_sizes), f'whatt???? \n{self.skip_down_channels}\n{self.skip_down_sizes}'
         print('hiiii generator')
         print(encoder_receive)
         print(encoder_receive_c)
 
         # Construct layers.
-        self.input = SynthesisInput(
-            w_dim=self.w_dim, channels=int(channels[0]), size=int(sizes[0]),
-            sampling_rate=sampling_rates[0], bandwidth=cutoffs[0])
+        # self.input = SynthesisInput(
+        #     w_dim=self.w_dim, channels=int(channels[0]), size=int(sizes[0]),
+        #     sampling_rate=sampling_rates[0], bandwidth=cutoffs[0])
+        self.input = CondSynthesisInput(w_dim=self.w_dim, 
+                                        channels=int(channels[0]),
+                                        in_size=bottleneck_size,
+                                        out_size = int(sizes[0]))
         self.layer_names = []
         self.layer_fp16 = []
 
@@ -496,17 +519,16 @@ class SynthesisNetwork(torch.nn.Module):
             use_fp16 = (sampling_rates[idx] * (2 ** self.num_fp16_res) > self.img_resolution)
             self.layer_fp16.append(use_fp16)
 
-            # if idx-1 in skip_channels_idx:
-            #   c_in = int(channels[prev]//2) + int(channels[prev])
-            # else:
-            # c_in = int(channels[prev]) + 
-            # if idx == 0:
-            #   c_in = int(channels[prev])
-            # elif self.skip_connection[prev]:
-            #   c_in = int(channels[prev])+self.skip_down_channels[idx]
-            # else:
-            #   c_in = int(channels[prev])
-            # print(f'c_in: {c_in}')
+            # if encoder_receive_c[idx]:
+            #   s_layer = SkipConcatLayer(in_channels=encoder_receive_c[idx], 
+            #                             out_channels=encoder_receive_c[idx],
+            #                             in_size=int(sizes[prev]), 
+            #                             out_size=int(sizes[prev]),
+            #                             is_critically_sampled=is_critically_sampled, 
+            #                             use_fp16=use_fp16,
+
+            #                             )
+
             c_in = int(channels[prev]) + encoder_receive_c[idx]
 
 
@@ -522,6 +544,8 @@ class SynthesisNetwork(torch.nn.Module):
             setattr(self, name, layer)
             self.layer_names.append(name)
 
+              
+
     def forward(self, ws, replaced_w, skips = None, **layer_kwargs):
         
         misc.assert_shape(ws, [None, self.num_ws, self.w_dim])
@@ -529,7 +553,8 @@ class SynthesisNetwork(torch.nn.Module):
         replaced_w = replaced_w.to(torch.float32).unbind(dim=1)
         
         # Execute layers.
-        x = self.input(ws[0]) if len(replaced_w) == 0 else self.input(replaced_w[0])
+        # x = self.input(ws[0]) if len(replaced_w) == 0 else self.input(replaced_w[0])
+        x = self.input(skips[0])
 
         if skips is None:
           assert False, 'missing skip inputs'
@@ -544,7 +569,9 @@ class SynthesisNetwork(torch.nn.Module):
             if s:
               # print(f'x: {x.shape}')
               # print(f's: {skip.shape}')
+
               concat = torch.nn.functional.pad(skips[s-1],(10,10,10,10), mode='reflect')
+              concat = gaussian_blur(concat,3,3)
               x = torch.cat([x,concat],dim=1)
             if idx < len(replaced_w[1:]):
               x = layer(x, replaced_w[1:][idx], **layer_kwargs)
@@ -583,12 +610,12 @@ class Generator(torch.nn.Module):
         projecting_img_dim  = (3,256,256),
 
         g_channels_res     = [256, 256, 256, 256, 256, 128, 128, 128, 64, 64, 32, 32, 16, 16, 16],
-        encoder_out_res    = [128, 64, 64, 32, 32, 16, 16,  8,  4],
-        encoder_channels   = [ 64,128,128,256,256,512,512,512,512],
-        encoder_connect_to = [  0,  0,  0,  0,  3,  2,  1,  0,  0],
-        encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  3,  0,  2,  0,   1],
+        encoder_out_res    = [128, 64, 64, 32, 32, 16, 16,  16,   8,   4],
+        encoder_channels   = [ 64,128,128,256,256,512,512, 512,1024,1024],
+        encoder_connect_to = [  0,  0,  0,  0,  4,  3,  2,   1,   0,   0],
+        encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  4,  0,  3,  0,   2],
         encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,512,  0,512,  0, 512],
-
+        bottleneck_size    = 16,
         connection_start        = 0,
         connection_end          = 11,
         connection_grow_from    = 4,
@@ -618,6 +645,7 @@ class Generator(torch.nn.Module):
                                           # skip_connection=skip_connection, 
                                           encoder_receive = encoder_receive,
                                           encoder_receive_c = encoder_receive_c,
+                                          bottleneck_size = bottleneck_size,
                                           **synthesis_kwargs)
         self.num_ws = self.synthesis.num_ws
         self.mapping = MappingNetwork(z_dim=z_dim, 
