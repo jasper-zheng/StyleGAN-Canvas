@@ -279,7 +279,8 @@ class AppendedNet(torch.nn.Module):
         paddings = 10
         print(f'padding {paddings}')
 
-        self.in_proj = DownConv2dLayer(p_dim[0], encoder_channels[0], 1, paddings = 0, bias=True, activation='lrelu', is_fp16 = layer_fp16[0])
+        # self.in_proj = DownConv2dLayer(p_dim[0], encoder_channels[0], 1, paddings = 0, bias=True, activation='lrelu', is_fp16 = layer_fp16[0])
+        self.in_proj = ResConvBlock(p_dim[0], encoder_channels[0], encoder_channels[0], kernel_size=3, paddings = 1, scale_factor = 1, is_fp16 = layer_fp16[0])
 
         self.down_names = []
         out_size = p_dim[1]
