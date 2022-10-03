@@ -119,7 +119,7 @@ class StyleGAN2Loss(Loss):
           p.requires_grad_(False)
 
 
-    def accumulate_gradients(self, phase, real_img, cond_img, real_c, gen_z, gen_c, gain, cur_nimg, mute = True, grid_size = None, train_affine = False, use_vgg=False, gan_factor=0.6, target_factor=0.8):
+    def accumulate_gradients(self, phase, real_img, cond_img, real_c, gen_z, gen_c, gain, cur_nimg, mute = True, grid_size = None, train_affine = False, use_vgg=False, gan_factor=0.6, target_factor=0.8, d_factor = 1.3):
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
         if train_affine:
           self.freeze_for_affine()
@@ -143,7 +143,7 @@ class StyleGAN2Loss(Loss):
 
                 # loss_Gtarget = torch.nn.functional.mse_loss(gen_img, real_img_tmp)
                 if use_vgg:
-                  loss_Gtarget = self.run_vgg_loss(gen_img, real_img_tmp, blur_sigma=blur_sigma)
+                  loss_Gtarget = self.run_vgg_loss(gen_img, real_img_tmp, blur_sigma=blur_sigma) * 0.2
                 else:
                   loss_Gtarget = self.run_mse(gen_img, real_img_tmp, blur_sigma=blur_sigma)
                 
@@ -199,9 +199,11 @@ class StyleGAN2Loss(Loss):
                     gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, update_emas=True)
                     training_stats.report('Loss/scores/fake', gen_logits)
                     training_stats.report('Loss/signs/fake', gen_logits.sign())
-                    loss_Dgen = torch.nn.functional.softplus(gen_logits) # -log(1 - sigmoid(gen_logits))
+                    loss_Dgen = torch.nn.functional.softplus(gen_logits)
+                    # -log(1 - sigmoid(gen_logits))
                 with torch.autograd.profiler.record_function('Dgen_backward'):
-                    loss_Dgen.mean().mul(gain).backward()
+                    loss_Dgen = loss_Dgen.mean().mul(gain) * d_factor
+                    loss_Dgen.backward()
 
             # Dmain: Maximize logits for real images.
             # Dr1: Apply R1 regularization.

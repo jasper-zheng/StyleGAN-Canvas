@@ -584,10 +584,10 @@ class Generator(torch.nn.Module):
 
         g_channels_res     = [256, 256, 256, 256, 256, 128, 128, 128, 64, 64, 32, 32, 16, 16, 16],
         encoder_out_res    = [128, 64, 64, 32, 32, 16, 16,  8,  4],
-        encoder_channels   = [ 64, 64,128,256,256,512,512,512,512],
-        encoder_connect_to = [  0,  0,  0,  4,  3,  2,  1,  0,  0],
-        encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  4,  3,  2,  1,  0,  0],
-        encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,  0,256,512,512,512,  0,  0],
+        encoder_channels   = [ 64,128,128,256,256,512,512,512,512],
+        encoder_connect_to = [  0,  0,  0,  0,  3,  2,  1,  0,  0],
+        encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  3,  0,  2,  0,   1],
+        encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,512,  0,512,  0, 512],
 
         connection_start        = 0,
         connection_end          = 11,
