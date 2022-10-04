@@ -606,9 +606,9 @@ class Generator(torch.nn.Module):
         g_channels_res     = [256, 256, 256, 256, 256, 128, 128, 128, 64, 64, 32, 32, 16, 16, 16],
         encoder_out_res    = [128, 64, 64, 32, 32, 16, 16,  16,   8,   4],
         encoder_channels   = [ 64,128,128,256,256,512,512, 512,1024,1024],
-        encoder_connect_to = [  0,  0,  0,  0,  4,  3,  2,   1,   0,   0],
-        encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  4,  0,  3,  0,   2],
-        encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,512,  0,512,  0, 512],
+        encoder_connect_to = [  0,  0,  5,  0,  4,  3,  2,   1,   0,   0],
+        encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  5,  0,  4,  0,  3,  0,   2],
+        encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,256,  0,512,  0,512,  0, 512],
         bottleneck_size    = 16,
         connection_start        = 0,
         connection_end          = 11,
@@ -663,16 +663,21 @@ class Generator(torch.nn.Module):
         # print(skips_in.shape)
         skips_out, replaced_w = self.appended_net(skips_in)
         # print(len(skips_out))
-        # skips_out = reversed(skips_out)
+
         skips_out.reverse()
-        # skips_out = reversed(self.appended_net(skips_in)) if not skips_in==None else None
 
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
         
-        # for s in skips_out:
-        #   print(s.shape if s is not None else "none")
-        
         img = self.synthesis(ws, replaced_w, skips = skips_out, update_emas=update_emas, **synthesis_kwargs)
         return img
+
+
+
+
+
+
+
+
+        
 
 #----------------------------------------------------------------------------
