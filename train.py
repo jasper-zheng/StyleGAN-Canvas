@@ -134,7 +134,6 @@ def parse_comma_separated_list(s):
 # Optional features.
 @click.option('--cond',         help='Train conditional model', metavar='BOOL',                 type=bool, default=False, show_default=True)
 @click.option('--mirror',       help='Enable dataset x-flips', metavar='BOOL',                  type=bool, default=False, show_default=True)
-@click.option('--vggloss',      help='Enable VGG loss', metavar='BOOL',                         type=bool, default=True, show_default=True)
 @click.option('--switch-to-vgg',help='Switch to VGG loss after N kimg', metavar='Int',          type=click.IntRange(min=0), default=38400, show_default=True)
 @click.option('--gan-factor',     help='gan factor', metavar='FLOAT',                               type=click.FloatRange(min=0), default=0.9, show_default=True)
 @click.option('--target-factor',     help='target factor', metavar='FLOAT',                         type=click.FloatRange(min=0), default=1, show_default=True)
@@ -164,6 +163,7 @@ def parse_comma_separated_list(s):
 @click.option('--replaced-ws',         help='encode the first N extended w+ latent space', metavar='INT', type=click.IntRange(min=0), default=6, show_default=True)
 @click.option('--connection-grow-kimg',help='grow connection after the first N kimg', metavar='INT', type=click.IntRange(min=0), default=9999999, show_default=True)
 @click.option('--connection-grow-step',help='grow connection after each N kimg', metavar='INT', type=click.IntRange(min=0), default=96, show_default=True)
+@click.option('--encode-rgb',   help='Encode the latent for to_rgb layer', metavar='BOOL',      type=bool, default=True, show_default=True)
 
 # Misc settings.
 @click.option('--desc',         help='String to include in result dir name', metavar='STR',     type=str)
@@ -224,10 +224,10 @@ def main(**kwargs):
     c.G_kwargs.channel_base = c.D_kwargs.channel_base = opts.cbase
     c.G_kwargs.channel_max = c.D_kwargs.channel_max = opts.cmax
     c.G_kwargs.mapping_kwargs.num_layers = (8 if opts.cfg == 'stylegan2' else 2) if opts.map_depth is None else opts.map_depth
+    c.G_kwargs.encode_rgb = opts.encode_rgb
     c.D_kwargs.block_kwargs.freeze_layers = opts.freezed
     c.D_kwargs.epilogue_kwargs.mbstd_group_size = opts.mbstd_group
     c.loss_kwargs.r1_gamma = opts.gamma
-    c.loss_kwargs.vggloss = opts.vggloss
     c.G_opt_kwargs.lr = (0.002 if opts.cfg == 'stylegan2' else 0.0025) if opts.glr is None else opts.glr
     c.D_opt_kwargs.lr = opts.dlr
     c.metrics = opts.metrics

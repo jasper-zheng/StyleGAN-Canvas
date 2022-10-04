@@ -241,7 +241,7 @@ class AppendedNet(torch.nn.Module):
         self.img_sizes = img_sizes
         self.img_channels = img_channels
         # self.skip_channels_idx = skip_channels_idx
-        self.num_appended_ws = num_appended_ws
+        self.num_appended_ws = num_appended_ws + 1
         self.encoder_connect_to = encoder_connect_to
         # self.encoder_receive = encoder_receive
         # self.skip_connection = skip_connection
@@ -279,8 +279,8 @@ class AppendedNet(torch.nn.Module):
         paddings = 10
         print(f'padding {paddings}')
 
-        # self.in_proj = DownConv2dLayer(p_dim[0], encoder_channels[0], 1, paddings = 0, bias=True, activation='lrelu', is_fp16 = layer_fp16[0])
-        self.in_proj = ResConvBlock(p_dim[0], encoder_channels[0], encoder_channels[0], kernel_size=3, paddings = 1, scale_factor = 1, is_fp16 = layer_fp16[0])
+        self.in_proj = DownConv2dLayer(p_dim[0], encoder_channels[0], 1, paddings = 0, bias=True, activation='lrelu', is_fp16 = layer_fp16[0])
+        # self.in_proj = ResConvBlock(p_dim[0], encoder_channels[0], encoder_channels[0], kernel_size=3, paddings = 1, scale_factor = 1, is_fp16 = layer_fp16[0])
 
         self.down_names = []
         out_size = p_dim[1]

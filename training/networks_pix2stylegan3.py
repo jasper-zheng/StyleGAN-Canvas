@@ -458,6 +458,7 @@ class SynthesisNetwork(torch.nn.Module):
         encoder_receive     = [],
         encoder_receive_c   = [],
         bottleneck_size     = 16,
+        encode_rgb          = True,
         **layer_kwargs                 # Arguments for SynthesisLayer.
     ):
         super().__init__()
@@ -470,6 +471,7 @@ class SynthesisNetwork(torch.nn.Module):
         self.margin_size = margin_size
         self.output_scale = output_scale
         self.num_fp16_res = num_fp16_res
+        self.encode_rgb = encode_rgb
         # self.skip_channels_idx = skip_channels_idx
         # self.skip_connection = skip_connection
 
@@ -519,16 +521,6 @@ class SynthesisNetwork(torch.nn.Module):
             use_fp16 = (sampling_rates[idx] * (2 ** self.num_fp16_res) > self.img_resolution)
             self.layer_fp16.append(use_fp16)
 
-            # if encoder_receive_c[idx]:
-            #   s_layer = SkipConcatLayer(in_channels=encoder_receive_c[idx], 
-            #                             out_channels=encoder_receive_c[idx],
-            #                             in_size=int(sizes[prev]), 
-            #                             out_size=int(sizes[prev]),
-            #                             is_critically_sampled=is_critically_sampled, 
-            #                             use_fp16=use_fp16,
-
-            #                             )
-
             c_in = int(channels[prev]) + encoder_receive_c[idx]
 
 
@@ -573,7 +565,9 @@ class SynthesisNetwork(torch.nn.Module):
               concat = torch.nn.functional.pad(skips[s-1],(10,10,10,10), mode='reflect')
               concat = gaussian_blur(concat,3,3)
               x = torch.cat([x,concat],dim=1)
-            if idx < len(replaced_w[1:]):
+            if layer.is_torgb and self.encode_rgb:
+              x = layer(x, replaced_w[-1], **layer_kwargs)
+            elif idx < len(replaced_w[1:]):
               x = layer(x, replaced_w[1:][idx], **layer_kwargs)
             else:
               x = layer(x, w, **layer_kwargs)
@@ -620,6 +614,7 @@ class Generator(torch.nn.Module):
         connection_end          = 11,
         connection_grow_from    = 4,
         num_appended_ws         = 6,
+        encode_rgb              = True,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
@@ -646,6 +641,7 @@ class Generator(torch.nn.Module):
                                           encoder_receive = encoder_receive,
                                           encoder_receive_c = encoder_receive_c,
                                           bottleneck_size = bottleneck_size,
+                                          encode_rgb = encode_rgb,
                                           **synthesis_kwargs)
         self.num_ws = self.synthesis.num_ws
         self.mapping = MappingNetwork(z_dim=z_dim, 
