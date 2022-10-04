@@ -65,7 +65,7 @@ class ResConvBlock(torch.nn.Module):
         self.paddings = paddings 
         self.conv1 = DownConv2dLayer(in_channels, mid_channels, kernel_size = kernel_size, paddings = kernel_size//2, bias = True, activation = activation, is_fp16 = is_fp16)
         self.conv2 = DownConv2dLayer(in_channels, out_channels, kernel_size = kernel_size, paddings = kernel_size//2, bias = True, activation = activation, is_fp16 = is_fp16)
-
+        self.batch_norm = torch.nn.BatchNorm2d(out_channels)
         self.scale_factor = scale_factor
         if not scale_factor == 1:
           self.pool = torch.nn.AvgPool2d(2)
@@ -87,6 +87,7 @@ class ResConvBlock(torch.nn.Module):
       # x = torch.nn.functional.pad(x,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
       
       x = short_cut.add_(x)
+      x = self.batch_norm(x)
       x = torch.nn.functional.leaky_relu(x, 0.2)
 
       # x = torch.nn.functional.pad(x,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
@@ -326,7 +327,6 @@ class AppendedNet(torch.nn.Module):
     # appended_ws_len = self.num_appended_ws if num_appended_ws_len == None else num_appended_ws_len
     # x = x.unsqueeze(1).repeat([1, appended_ws_len, 1])
     return skips, x
-
 
 
 

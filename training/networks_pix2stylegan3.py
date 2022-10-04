@@ -563,7 +563,7 @@ class SynthesisNetwork(torch.nn.Module):
               # print(f's: {skip.shape}')
 
               concat = torch.nn.functional.pad(skips[s-1],(10,10,10,10), mode='reflect')
-              concat = gaussian_blur(concat,3,3)
+              # concat = gaussian_blur(concat,3,3)
               x = torch.cat([x,concat],dim=1)
             if layer.is_torgb and self.encode_rgb:
               x = layer(x, replaced_w[-1], **layer_kwargs)
