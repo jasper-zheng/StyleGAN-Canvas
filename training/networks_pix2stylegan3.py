@@ -20,7 +20,12 @@ from torch_utils.ops import filtered_lrelu
 from torch_utils.ops import bias_act
 from training.appended_net_v2 import AppendedNet
 
-from torchvision.transforms.functional import gaussian_blur
+# from torchvision.transforms.functional import gaussian_blur
+from torchvision.transforms.functional import affine
+from kornia.morphology import dilation, erosion
+
+from torch_utils.ops import upfirdn2d
+
 
 #----------------------------------------------------------------------------
 
@@ -348,8 +353,9 @@ class SynthesisLayer(torch.nn.Module):
         pad_hi = pad_total - pad_lo
         self.pad_hi = int(pad_hi[0])
         self.padding = [int(pad_lo[0]), int(pad_hi[0]), int(pad_lo[1]), int(pad_hi[1])]
+        self.device = torch.device('cuda')
 
-    def forward(self, x, w, noise_mode='random', force_fp32=False, update_emas=False):
+    def forward(self, x, w, noise_mode='random', force_fp32=False, update_emas=False, op = None):
         assert noise_mode in ['random', 'const', 'none'] # unused
         misc.assert_shape(x, [None, self.in_channels, int(self.in_size[1]), int(self.in_size[0])])
         misc.assert_shape(w, [x.shape[0], self.w_dim])
@@ -378,11 +384,21 @@ class SynthesisLayer(torch.nn.Module):
         x = filtered_lrelu.filtered_lrelu(x=x, fu=self.up_filter, fd=self.down_filter, b=self.bias.to(x.dtype),
             up=self.up_factor, down=self.down_factor, padding=self.padding, gain=gain, slope=slope, clamp=self.conv_clamp)
 
-        ######## Concat skipped x
+        ######## op
+
+        if op is not None:
+          # print(f'in: {x.shape}')
+          x = erosion(x, torch.ones((op["erosion"], op["erosion"]),dtype=dtype).to(self.device)) if op["erosion"] else x
+          # print(f'ero: {x.shape}')
+          x = dilation(x, torch.ones((op["dilation"], op["dilation"]),dtype=dtype).to(self.device)) if op["dilation"] else x
+          # print(f'dil: {x.shape}')
+          # x = x.to(dtype)
+          x = affine(x, angle=op["angle"], translate=op['translate'], scale=op['scale'], shear=0)
+
 
         # Ensure correct shape and dtype.
         misc.assert_shape(x, [None, self.out_channels, int(self.out_size[1]), int(self.out_size[0])])
-        assert x.dtype == dtype
+        assert x.dtype == dtype, 'dtype error'
         return x
 
     @staticmethod
@@ -435,7 +451,6 @@ class SynthesisLayer(torch.nn.Module):
         
 #         return x
 #----------------------------------------------------------------------------
-
 @persistence.persistent_class
 class SynthesisNetwork(torch.nn.Module):
     def __init__(self,
@@ -458,7 +473,8 @@ class SynthesisNetwork(torch.nn.Module):
         encoder_receive     = [],
         encoder_receive_c   = [],
         bottleneck_size     = 16,
-        encode_rgb          = True,
+        encode_rgb          = 1,
+        blur_sigma          = 3,
         **layer_kwargs                 # Arguments for SynthesisLayer.
     ):
         super().__init__()
@@ -513,7 +529,13 @@ class SynthesisNetwork(torch.nn.Module):
         encoder_receive.reverse()
         encoder_receive_c.reverse()
         self.encoder_receive = encoder_receive
-
+        
+        self.device = torch.device('cuda')
+        self.blur_sigma = blur_sigma
+        self.blur_size = np.floor(self.blur_sigma * 3)
+        f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
+        self.register_buffer('filter', f)
+        
         for idx in range(self.num_layers + 1):
             prev = max(idx - 1, 0)
             is_torgb = (idx == self.num_layers)
@@ -536,9 +558,10 @@ class SynthesisNetwork(torch.nn.Module):
             setattr(self, name, layer)
             self.layer_names.append(name)
 
-              
+    def test_func(self):
+      print('hii')     
 
-    def forward(self, ws, replaced_w, skips = None, **layer_kwargs):
+    def forward(self, ws, replaced_w, skips = None, operations = {}, **layer_kwargs):
         
         misc.assert_shape(ws, [None, self.num_ws, self.w_dim])
         ws = ws.to(torch.float32).unbind(dim=1)
@@ -546,8 +569,10 @@ class SynthesisNetwork(torch.nn.Module):
         
         # Execute layers.
         # x = self.input(ws[0]) if len(replaced_w) == 0 else self.input(replaced_w[0])
-        x = self.input(skips[0])
-
+        x = upfirdn2d.filter2d(skips[0], self.filter / self.filter.sum()) if self.blur_sigma else skips[0]
+        x = self.input(x)
+        
+        
         if skips is None:
           assert False, 'missing skip inputs'
 
@@ -564,14 +589,19 @@ class SynthesisNetwork(torch.nn.Module):
 
               concat = torch.nn.functional.pad(skips[s-1],(10,10,10,10), mode='reflect')
               # concat = gaussian_blur(concat,3,3)
+              # concat = upfirdn2d.filter2d(concat, self.filter / self.filter.sum())
               x = torch.cat([x,concat],dim=1)
-            if layer.is_torgb and self.encode_rgb:
-              x = layer(x, replaced_w[-1], **layer_kwargs)
+            # if layer.is_torgb and self.encode_rgb:
+            op = operations[name] if name in operations.keys() else None
+            if self.encode_rgb >= self.num_ws-1-idx:
+              x = layer(x, replaced_w[-1], op=op, **layer_kwargs)
+              # print('rgb')
             elif idx < len(replaced_w[1:]):
-              x = layer(x, replaced_w[1:][idx], **layer_kwargs)
+              x = layer(x, replaced_w[1:][idx], op=op, **layer_kwargs)
             else:
-              x = layer(x, w, **layer_kwargs)
-            
+              x = layer(x, w, op=op, **layer_kwargs)
+
+
         if self.output_scale != 1:
             x = x * self.output_scale
 
@@ -590,6 +620,7 @@ class SynthesisNetwork(torch.nn.Module):
             f'num_layers={self.num_layers:d}, num_critical={self.num_critical:d},',
             f'margin_size={self.margin_size:d}, num_fp16_res={self.num_fp16_res:d}'])
 
+
 #----------------------------------------------------------------------------
 
 @persistence.persistent_class
@@ -604,17 +635,18 @@ class Generator(torch.nn.Module):
         projecting_img_dim  = (3,256,256),
 
         g_channels_res     = [256, 256, 256, 256, 256, 128, 128, 128, 64, 64, 32, 32, 16, 16, 16],
-        encoder_out_res    = [128, 64, 64, 32, 32, 16, 16,  16,   8,   4],
-        encoder_channels   = [ 64,128,128,256,256,512,512, 512,1024,1024],
-        encoder_connect_to = [  0,  0,  5,  0,  4,  3,  2,   1,   0,   0],
-        encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  5,  0,  4,  0,  3,  0,   2],
-        encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,256,  0,512,  0,512,  0, 512],
+        encoder_out_res    = [128, 64, 64, 32, 32, 32, 16, 16,  16,   8,   4],
+        encoder_channels   = [ 64,128,128,256,256,256,512,512, 512,1024,1024],
+        encoder_connect_to = [  0,  0,  0,  0,  0,  4,  3,  2,   1,   0,   0],
+        encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  4,  0,  3,  0,   2],
+        encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,512,  0,512,  0, 512],
         bottleneck_size    = 16,
         connection_start        = 0,
         connection_end          = 11,
         connection_grow_from    = 4,
         num_appended_ws         = 6,
         encode_rgb              = True,
+        blur_sigma              = 3,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.
     ):
         super().__init__()
@@ -642,6 +674,7 @@ class Generator(torch.nn.Module):
                                           encoder_receive_c = encoder_receive_c,
                                           bottleneck_size = bottleneck_size,
                                           encode_rgb = encode_rgb,
+                                          blur_sigma = blur_sigma,
                                           **synthesis_kwargs)
         self.num_ws = self.synthesis.num_ws
         self.mapping = MappingNetwork(z_dim=z_dim, 
@@ -659,7 +692,7 @@ class Generator(torch.nn.Module):
                                         num_appended_ws)
 
 
-    def forward(self, z, c, skips_in, truncation_psi=1, truncation_cutoff=None, update_emas=False, **synthesis_kwargs):
+    def forward(self, z, c, skips_in, truncation_psi=1, truncation_cutoff=None, update_emas=False, operations = {}, **synthesis_kwargs):
         # print(skips_in.shape)
         skips_out, replaced_w = self.appended_net(skips_in)
         # print(len(skips_out))
@@ -668,7 +701,7 @@ class Generator(torch.nn.Module):
 
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
         
-        img = self.synthesis(ws, replaced_w, skips = skips_out, update_emas=update_emas, **synthesis_kwargs)
+        img = self.synthesis(ws, replaced_w, skips = skips_out, update_emas=update_emas, operations = operations, **synthesis_kwargs)
         return img
 
 

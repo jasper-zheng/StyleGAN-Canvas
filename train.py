@@ -135,8 +135,8 @@ def parse_comma_separated_list(s):
 @click.option('--cond',         help='Train conditional model', metavar='BOOL',                 type=bool, default=False, show_default=True)
 @click.option('--mirror',       help='Enable dataset x-flips', metavar='BOOL',                  type=bool, default=False, show_default=True)
 @click.option('--switch-to-vgg',help='Switch to VGG loss after N kimg', metavar='Int',          type=click.IntRange(min=0), default=38400, show_default=True)
-@click.option('--gan-factor',     help='gan factor', metavar='FLOAT',                               type=click.FloatRange(min=0), default=0.9, show_default=True)
-@click.option('--target-factor',     help='target factor', metavar='FLOAT',                         type=click.FloatRange(min=0), default=1, show_default=True)
+@click.option('--gan-factor',     help='gan factor', metavar='FLOAT',                               type=click.FloatRange(min=0), default=0.5, show_default=True)
+@click.option('--target-factor',     help='target factor', metavar='FLOAT',                         type=click.FloatRange(min=0), default=2, show_default=True)
 @click.option('--d-factor',     help='d factor', metavar='FLOAT',                                   type=click.FloatRange(min=0), default=1, show_default=True)
 
 
@@ -160,10 +160,11 @@ def parse_comma_separated_list(s):
 @click.option('--connection-start',    help='idx of layer that skip connections start from', metavar='INT', type=click.IntRange(min=0), default=0, show_default=True)
 @click.option('--connection-end',      help='idx of layer that skip connections end', metavar='INT', type=click.IntRange(min=0), default=12, show_default=True)
 @click.option('--connection-grow-from',help='grow skip connections from', metavar='INT', type=click.IntRange(min=0), default=4, show_default=True)
-@click.option('--replaced-ws',         help='encode the first N extended w+ latent space', metavar='INT', type=click.IntRange(min=0), default=6, show_default=True)
+@click.option('--replaced-ws',         help='encode the first N extended w+ latent space', metavar='INT', type=click.IntRange(min=0,max=15), default=6, show_default=True)
 @click.option('--connection-grow-kimg',help='grow connection after the first N kimg', metavar='INT', type=click.IntRange(min=0), default=9999999, show_default=True)
 @click.option('--connection-grow-step',help='grow connection after each N kimg', metavar='INT', type=click.IntRange(min=0), default=96, show_default=True)
-@click.option('--encode-rgb',   help='Encode the latent for to_rgb layer', metavar='BOOL',      type=bool, default=True, show_default=True)
+@click.option('--encode-rgb',   help='Encode the latent for to_rgb layer', metavar='INT',       type=click.IntRange(min=0), default=0, show_default=True)
+@click.option('--concat-blur-sigma',   help='Encode the latent for to_rgb layer', metavar='INT',type=click.IntRange(min=0), default=3, show_default=True)
 
 # Misc settings.
 @click.option('--desc',         help='String to include in result dir name', metavar='STR',     type=str)
@@ -225,6 +226,7 @@ def main(**kwargs):
     c.G_kwargs.channel_max = c.D_kwargs.channel_max = opts.cmax
     c.G_kwargs.mapping_kwargs.num_layers = (8 if opts.cfg == 'stylegan2' else 2) if opts.map_depth is None else opts.map_depth
     c.G_kwargs.encode_rgb = opts.encode_rgb
+    c.G_kwargs.blur_sigma = opts.concat_blur_sigma
     c.D_kwargs.block_kwargs.freeze_layers = opts.freezed
     c.D_kwargs.epilogue_kwargs.mbstd_group_size = opts.mbstd_group
     c.loss_kwargs.r1_gamma = opts.gamma
@@ -302,9 +304,9 @@ def main(**kwargs):
     if opts.resume is not None:
         c.resume_pkl = opts.resume
         c.resume_kimg = opts.resume_kimg
-        # c.ada_kimg = 100 # Make ADA react faster at the beginning.
-        # c.ema_rampup = None # Disable EMA rampup.
-        c.loss_kwargs.blur_init_sigma = 10 # Disable blur rampup.
+        c.ada_kimg = 100 # Make ADA react faster at the beginning.
+        c.ema_rampup = None # Disable EMA rampup.
+        c.loss_kwargs.blur_init_sigma = 0 # Disable blur rampup.
 
 
     # Performance-related toggles.
