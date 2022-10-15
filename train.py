@@ -135,8 +135,8 @@ def parse_comma_separated_list(s):
 @click.option('--cond',         help='Train conditional model', metavar='BOOL',                 type=bool, default=False, show_default=True)
 @click.option('--mirror',       help='Enable dataset x-flips', metavar='BOOL',                  type=bool, default=False, show_default=True)
 @click.option('--switch-to-vgg',help='Switch to VGG loss after N kimg', metavar='Int',          type=click.IntRange(min=0), default=38400, show_default=True)
-@click.option('--gan-factor',     help='gan factor', metavar='FLOAT',                               type=click.FloatRange(min=0), default=0.5, show_default=True)
-@click.option('--target-factor',     help='target factor', metavar='FLOAT',                         type=click.FloatRange(min=0), default=2, show_default=True)
+@click.option('--gan-factor',     help='gan factor', metavar='FLOAT',                               type=click.FloatRange(min=0), default=0.9, show_default=True)
+@click.option('--target-factor',     help='target factor', metavar='FLOAT',                         type=click.FloatRange(min=0), default=0.8, show_default=True)
 @click.option('--d-factor',     help='d factor', metavar='FLOAT',                                   type=click.FloatRange(min=0), default=1, show_default=True)
 
 
@@ -164,7 +164,7 @@ def parse_comma_separated_list(s):
 @click.option('--connection-grow-kimg',help='grow connection after the first N kimg', metavar='INT', type=click.IntRange(min=0), default=9999999, show_default=True)
 @click.option('--connection-grow-step',help='grow connection after each N kimg', metavar='INT', type=click.IntRange(min=0), default=96, show_default=True)
 @click.option('--encode-rgb',   help='Encode the latent for to_rgb layer', metavar='INT',       type=click.IntRange(min=0), default=0, show_default=True)
-@click.option('--concat-blur-sigma',   help='Encode the latent for to_rgb layer', metavar='INT',type=click.IntRange(min=0), default=3, show_default=True)
+@click.option('--concat-blur-sigma',   help='Encode the latent for to_rgb layer', metavar='INT',type=click.IntRange(min=0), default=0, show_default=True)
 
 # Misc settings.
 @click.option('--desc',         help='String to include in result dir name', metavar='STR',     type=str)
@@ -306,7 +306,7 @@ def main(**kwargs):
         c.resume_kimg = opts.resume_kimg
         c.ada_kimg = 100 # Make ADA react faster at the beginning.
         c.ema_rampup = None # Disable EMA rampup.
-        c.loss_kwargs.blur_init_sigma = 0 # Disable blur rampup.
+        c.loss_kwargs.blur_init_sigma = 10 # Disable blur rampup.
 
 
     # Performance-related toggles.

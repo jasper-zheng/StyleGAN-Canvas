@@ -64,7 +64,7 @@ class ResConvBlock(torch.nn.Module):
         self.is_fp16 = is_fp16
         self.paddings = paddings 
         self.conv1 = DownConv2dLayer(in_channels, mid_channels, kernel_size = kernel_size, paddings = kernel_size//2, bias = True, activation = activation, is_fp16 = is_fp16)
-        self.conv2 = DownConv2dLayer(in_channels, out_channels, kernel_size = kernel_size, paddings = kernel_size//2, bias = True, activation = activation, is_fp16 = is_fp16)
+        self.conv2 = DownConv2dLayer(mid_channels, out_channels, kernel_size = kernel_size, paddings = kernel_size//2, bias = True, activation = activation, is_fp16 = is_fp16)
         self.batch_norm = torch.nn.BatchNorm2d(out_channels)
         self.scale_factor = scale_factor
         if not scale_factor == 1:
@@ -199,23 +199,19 @@ class AppendEpilogue(torch.nn.Module):
         num_appended_ws
     ):
         super().__init__()
-        print(f'epilogue: ({in_channels}, {in_res}, {in_res})')
-        self.flatten = torch.nn.Flatten(start_dim=1)
-        self.mapping_in = torch.nn.Linear(in_channels*in_res*in_res, out_channels, bias=True)
-        # self.mapping_2 = torch.nn.Linear(out_channels, out_channels, bias=True)
+        print(f'epilogue: ({in_channels}, {in_res}, {in_res})')\
+        # self.flatten = torch.nn.Flatten(start_dim=1)
+        self.mapping_in = torch.nn.Linear(in_channels, out_channels, bias=True)
         self.mapping = CondMappingNetwork(z_dim=out_channels, 
                                           c_dim=0, 
                                           w_dim=512, 
                                           num_ws=num_appended_ws)
 
     def forward(self, x):
-      x = self.flatten(x)
-      # x = torch.nn.functional.leaky_relu(x, 0.2)
+      x = x.mean([2,3])
+      # x = self.flatten(x)
       x = self.mapping_in(x)
       x = self.mapping(x, None)
-      # x = torch.nn.functional.leaky_relu(x, 0.2)
-      # x = self.mapping_2(x)
-      # x = torch.nn.functional.leaky_relu(x, 0.2)
 
 
       return x
@@ -236,8 +232,10 @@ class AppendedNet(torch.nn.Module):
         # encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  4,  3,  2,  1,  0],
         layer_fp16 = [],
         num_appended_ws = 3,
+        spli_idx = 2,
     ):
         super().__init__()
+        self.spli_idx = spli_idx
         self.p_dim = p_dim
         self.img_sizes = img_sizes
         self.img_channels = img_channels
@@ -300,12 +298,23 @@ class AppendedNet(torch.nn.Module):
           self.down_names.append(name)
           print(f'{name}\t fp16: {computed_fp}')
           setattr(self, name, layer)
-
-          # for i in range(int(log2(out_size))-2):
+          if idx == self.spli_idx:
+             self.down_spl_names = []
+             split_res = out_size
+             for split_idx in range(int(log2(out_size))-2):
+                split_res = split_res//2
+                in_c = c_out if split_idx == 0 else 512
+                layer = ResConvBlock(in_c,512,512, kernel_size=3, paddings = 0, scale_factor = 0.5, is_fp16 = computed_fp)
+                name = f'SPL{split_idx}_R{split_res}_C{in_c}'
+                self.down_spl_names.append(name)
+                print(f'{name}\t fp16: {computed_fp}')
+                setattr(self, name, layer)
+             
+             self.epilogue = AppendEpilogue(512, split_res, 512, self.num_appended_ws)
 
         print(f'last skip shape: {out_size}')
 
-        self.epilogue = AppendEpilogue(c_out, out_size, 512, self.num_appended_ws)
+        # self.epilogue = AppendEpilogue(c_out, out_size, 512, self.num_appended_ws)
 
 
   def forward(self, x, num_appended_ws_len = None):
@@ -321,12 +330,17 @@ class AppendedNet(torch.nn.Module):
       x = layer(x)
       if ct:
         skips.append(x)
-      
-    x = self.epilogue(x)
+      if idx == self.spli_idx:
+        ws = x
+        for spl_idx, spl_name in enumerate(self.down_spl_names):
+            # print(spl_name)
+            layer = getattr(self,spl_name)
+            ws = layer(ws)
+        
+        ws = self.epilogue(ws.to(torch.float32))
+    # x = self.epilogue(x)
 
-    # appended_ws_len = self.num_appended_ws if num_appended_ws_len == None else num_appended_ws_len
-    # x = x.unsqueeze(1).repeat([1, appended_ws_len, 1])
-    return skips, x
+    return skips, ws
 
 
 
