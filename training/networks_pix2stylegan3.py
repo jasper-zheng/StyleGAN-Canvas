@@ -371,7 +371,7 @@ class SynthesisLayer(torch.nn.Module):
 
     def forward(self, x, w, noise_mode='random', force_fp32=False, update_emas=False, op = None):
         assert noise_mode in ['random', 'const', 'none'] # unused
-        misc.assert_shape(x, [None, self.in_channels, int(self.in_size[1]), int(self.in_size[0])])
+        # misc.assert_shape(x, [None, self.in_channels, int(self.in_size[1]), int(self.in_size[0])])
         misc.assert_shape(w, [x.shape[0], self.w_dim])
 
         # Track input magnitude.
@@ -598,10 +598,10 @@ class SynthesisNetwork(torch.nn.Module):
 
         return op
 
-    def forward(self, ws, replaced_w, skips = None, operations = {}, **layer_kwargs):
+    def forward(self, replaced_w, skips = None, operations = {}, **layer_kwargs):
         
-        misc.assert_shape(ws, [None, self.num_ws, self.w_dim])
-        ws = ws.to(torch.float32).unbind(dim=1)
+        misc.assert_shape(replaced_w, [None, self.num_ws, self.w_dim])
+        # ws = ws.to(torch.float32).unbind(dim=1)
         replaced_w = replaced_w.to(torch.float32).unbind(dim=1)
         
         # Execute layers.
@@ -616,7 +616,7 @@ class SynthesisNetwork(torch.nn.Module):
         # print(len(self.layer_names))
         # print(len(ws[1:]))
         # print(len(skips))
-        for idx, (name, w, s) in enumerate(zip(self.layer_names, ws[1:], self.encoder_receive)):
+        for idx, (name, w, s) in enumerate(zip(self.layer_names, replaced_w[1:], self.encoder_receive)):
             # print(name)
             # print(x.shape)
             layer = getattr(self, name)
@@ -630,7 +630,7 @@ class SynthesisNetwork(torch.nn.Module):
               x = torch.cat([x,concat],dim=1)
 
             op = operations[name] if name in operations.keys() else None
-            x = layer(x, replaced_w[1:][idx], op=op, **layer_kwargs)
+            x = layer(x, w[idx], op=op, **layer_kwargs)
 
 
         if self.output_scale != 1:
@@ -716,11 +716,11 @@ class Generator(torch.nn.Module):
                                           blur_sigma = blur_sigma,
                                           **synthesis_kwargs)
         self.num_ws = self.synthesis.num_ws
-        self.mapping = MappingNetwork(z_dim=z_dim, 
-                                      c_dim=c_dim, 
-                                      w_dim=w_dim, 
-                                      num_ws=self.num_ws, 
-                                      **mapping_kwargs)
+        # self.mapping = MappingNetwork(z_dim=z_dim, 
+        #                               c_dim=c_dim, 
+        #                               w_dim=w_dim, 
+        #                               num_ws=self.num_ws, 
+        #                               **mapping_kwargs)
         self.appended_net = AppendedNet(self.synthesis.channels, 
                                         self.synthesis.sizes, 
                                         self.p_dim, 
@@ -738,9 +738,9 @@ class Generator(torch.nn.Module):
 
         skips_out.reverse()
 
-        ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
+        # ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
         
-        img = self.synthesis(ws, replaced_w, skips = skips_out, update_emas=update_emas, operations = operations, **synthesis_kwargs)
+        img = self.synthesis(replaced_w, skips = skips_out, update_emas=update_emas, operations = operations, **synthesis_kwargs)
         return img
 
     @torch.no_grad()
