@@ -71,7 +71,7 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 #----------------------------------------------------------------------------
 
 class Preprocess(torch.nn.Module):
-    def __init__(self, blur_sigma = 9, scale_factor = 0.1, out_size = 256):
+    def __init__(self, blur_sigma = 13, scale_factor = 0.1, out_size = 256):
         super().__init__()
         # self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
         self.device = torch.device('cuda')
@@ -88,9 +88,9 @@ class Preprocess(torch.nn.Module):
             img_tensor: [-1,1]
         '''
         
-        with torch.autograd.profiler.record_function('blur'):
-          f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
-          img_tensor = upfirdn2d.filter2d(img_tensor, f / f.sum())
+        # with torch.autograd.profiler.record_function('blur'):
+        #   f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
+        #   img_tensor = upfirdn2d.filter2d(img_tensor, f / f.sum())
         
 #         img_tensor = self.filter(img_tensor*0.5+1).clamp(0,1)*2-1
         # print(img_tensor.shape)
