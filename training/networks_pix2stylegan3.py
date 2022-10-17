@@ -410,10 +410,11 @@ class SynthesisLayer(torch.nn.Module):
           x_d = erosion(x_d, torch.ones((op["erosion"], op["erosion"]),dtype=dtype).to(self.device)) if op["erosion"] else x_d
           x_d = dilation(x_d, torch.ones((op["dilation"], op["dilation"]),dtype=dtype).to(self.device)) if op["dilation"] else x_d
           
-          if op['cluster'] != -1:
-            sl = self.cluster == op['cluster']
-            sl = sl.unsqueeze(0).unsqueeze(2).unsqueeze(3).repeat([1,1,x.shape[2],x.shape[3]])
-            x_d = torch.where(sl,x_d,x)
+          sl = torch.zeros_like(self.cluster,dtype=torch.bool).to(self.device)
+          for c in self.op['cluster']:
+            sl += self.cluster == c
+          sl = sl.unsqueeze(0).unsqueeze(2).unsqueeze(3).repeat([1,1,x.shape[2],x.shape[3]])
+          x_d = torch.where(sl,x_d,x)
 
           x = x_d
 
@@ -584,7 +585,7 @@ class SynthesisNetwork(torch.nn.Module):
                     "angle": 0,
                     "scale": 1,
                     "translate": [0,0],
-                    "cluster": -1
+                    "cluster": []
                 }
         with open(f'{f_path}/operation_template.json', 'w') as file:
             json.dump(op, file,indent=4)
@@ -650,7 +651,7 @@ class SynthesisNetwork(torch.nn.Module):
                   'angle': 0,
                   'scale': 1,
                   'translate': [0, 0],
-                  'cluster': -1
+                  'cluster': []
               })
         else:
           print(f'{layer_name} op is not initialised')
@@ -664,7 +665,7 @@ class SynthesisNetwork(torch.nn.Module):
                   'angle': 0,
                   'scale': 1,
                   'translate': [0, 0],
-                  'cluster': -1
+                  'cluster': []
               })
 
     def extra_repr(self):
