@@ -414,9 +414,6 @@ class SynthesisLayer(torch.nn.Module):
             sl = self.cluster == op['cluster']
             sl = sl.unsqueeze(0).unsqueeze(2).unsqueeze(3).repeat([1,1,x.shape[2],x.shape[3]])
             x_d = torch.where(sl,x_d,x)
-            # print(self.cluster.shape)
-
-            # x_d = x[:,self.cluster == op['cluster'],:,:]
 
           x = x_d
 
@@ -458,22 +455,7 @@ class SynthesisLayer(torch.nn.Module):
             f'in_size={list(self.in_size)}, out_size={list(self.out_size)},',
             f'in_channels={self.in_channels:d}, out_channels={self.out_channels:d}'])
 
-#----------------------------------------------------------------------------
 
-
-# @persistence.persistent_class
-# class SkipConcatLayer(torch.nn.Module):
-#     def __init__(self,
-#         use_fp16                       # Does this layer use FP16?
-#     ):
-#         super().__init__()
-#         self.use_fp16 = use_fp16
-
-#     def forward(self,x):
-
-#         x = 
-        
-#         return x
 #----------------------------------------------------------------------------
 @persistence.persistent_class
 class SynthesisNetwork(torch.nn.Module):
