@@ -593,7 +593,7 @@ class SynthesisNetwork(torch.nn.Module):
 
         return op
 
-    def forward(self, replaced_w, skips = None, operations = {}, **layer_kwargs):
+    def forward(self, replaced_w, skips = None, execute_op = False, **layer_kwargs):
         
         misc.assert_shape(replaced_w, [None, self.num_ws, self.w_dim])
         # ws = ws.to(torch.float32).unbind(dim=1)
@@ -611,7 +611,7 @@ class SynthesisNetwork(torch.nn.Module):
         # print(len(self.layer_names))
         # print(len(ws[1:]))
         # print(len(skips))
-        for idx, (name, w, s) in enumerate(zip(self.layer_names, replaced_w[1:], self.encoder_receive)):
+        for idx, (name, w, s, has_op) in enumerate(zip(self.layer_names, replaced_w[1:], self.encoder_receive, self.has_operation)):
             # print(name)
             # print(x.shape)
             layer = getattr(self, name)
@@ -620,12 +620,10 @@ class SynthesisNetwork(torch.nn.Module):
               # print(f's: {skip.shape}')
 
               concat = torch.nn.functional.pad(skips[s-1],(10,10,10,10), mode='reflect')
-              # concat = gaussian_blur(concat,3,3)
-              # concat = upfirdn2d.filter2d(concat, self.filter / self.filter.sum())
+              concat = upfirdn2d.filter2d(concat, self.filter / self.filter.sum()) if self.blur_sigma else concat
               x = torch.cat([x,concat],dim=1)
 
-            op = operations[name] if name in operations.keys() else None
-            x = layer(x, w, op=op, **layer_kwargs)
+            x = layer(x, w, execute_op = has_op and execute_op, **layer_kwargs)
 
 
         if self.output_scale != 1:
@@ -690,19 +688,13 @@ class Generator(torch.nn.Module):
         mapping_kwargs      = {},   # Arguments for MappingNetwork.
         projecting_img_dim  = (3,256,256),
 
-        # g_channels_res     = [256, 256, 256, 256, 256, 128, 128, 128, 64, 64, 32, 32, 16, 16, 16],
-        # encoder_out_res    = [128, 64, 64, 32, 32, 16, 16,  16,   8,   4],
-        # encoder_channels   = [ 64,128,128,256,256,512,512, 512,1024,1024],
-        # encoder_connect_to = [  0,  0,  5,  0,  4,  3,  2,   1,   0,   0],
-        # encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  5,  0,  4,  0,  3,  0,   2],
-        # encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,256,  0,512,  0,512,  0, 512],
-
         g_channels_res     = [256, 256, 256, 256, 256, 128, 128, 128, 64, 64, 32, 32, 16, 16, 16],
         encoder_out_res    = [128, 64, 64, 32, 32, 32, 16, 16,  16],
-        encoder_channels   = [ 64,128,128,256,256,256,512,512, 512],
+        encoder_channels   = [128,256,256,512,512,512,512,512, 512],
         encoder_connect_to = [  0,  0,  0,  0,  0,  4,  3,  2,   1],
         encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  4,  0,  3,  0,   2],
         encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,512,  0,512,  0, 512],
+        has_operation      = [  0,   0,   0,   0,   0,   0,   0,   0,  1,  1,  1,  1,  1,  1,   1],
 
         bottleneck_size    = 16,
         connection_start        = 0,
@@ -736,6 +728,7 @@ class Generator(torch.nn.Module):
                                           # skip_connection=skip_connection, 
                                           encoder_receive = encoder_receive,
                                           encoder_receive_c = encoder_receive_c,
+                                          has_operation = has_operation,
                                           bottleneck_size = bottleneck_size,
                                           encode_rgb = encode_rgb,
                                           blur_sigma = blur_sigma,
@@ -756,7 +749,7 @@ class Generator(torch.nn.Module):
                                         num_appended_ws)
 
 
-    def forward(self, z, c, skips_in, truncation_psi=1, truncation_cutoff=None, update_emas=False, operations = {}, **synthesis_kwargs):
+    def forward(self, z, c, skips_in, truncation_psi=1, truncation_cutoff=None, update_emas=False, execute_op = False, **synthesis_kwargs):
         # print(skips_in.shape)
         skips_out, replaced_w = self.appended_net(skips_in)
         # print(len(skips_out))
@@ -765,12 +758,11 @@ class Generator(torch.nn.Module):
 
         # ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
         
-        img = self.synthesis(replaced_w, skips = skips_out, update_emas=update_emas, operations = operations, **synthesis_kwargs)
+        img = self.synthesis(replaced_w, skips = skips_out, update_emas=update_emas, execute_op = execute_op, **synthesis_kwargs)
         return img
 
     @torch.no_grad()
     def generate_cluster_for_layer(self, layer_idx, classifier_bottleneck, classifier_path, skips_in, num_clusters = 5):
-        # TODO: update execution
         device = torch.device('cuda')
         z = np.random.randn(1, 512)
         z = torch.from_numpy(z).to(device)
@@ -788,14 +780,10 @@ class Generator(torch.nn.Module):
             layer = getattr(self.synthesis, name)
             if s:
               concat = torch.nn.functional.pad(skips_out[s-1],(10,10,10,10), mode='reflect')
+              concat = upfirdn2d.filter2d(concat, self.synthesis.filter / self.synthesis.filter.sum()) if self.synthesis.blur_sigma else concat
               x = torch.cat([x,concat],dim=1)
-            if layer.is_torgb and self.synthesis.encode_rgb:
-              x = layer(x, replaced_w[-1])
-            elif idx < len(replaced_w[1:]):
-
-              x = layer(x, replaced_w[1:][idx])
-            else:
-              x = layer(x, w)
+            
+            x = layer(x, w)
             
             if idx == layer_idx:
               print(f'clustering {name}')
@@ -831,7 +819,7 @@ class Generator(torch.nn.Module):
 
         grid = torch.cat(grids,dim=2)
         return to_pil_image(grid[0].cpu())
-
+    
     @torch.no_grad()
     def grid_cluster(self, x_show, cluster_ids_x, c_idx, img_per_row=15):
         x_show = x_show[:,cluster_ids_x == c_idx,:,:]
@@ -840,39 +828,39 @@ class Generator(torch.nn.Module):
         grid = torch.nn.functional.interpolate(grid, size=s, mode='bilinear')
         return to_pil_image(grid[0].cpu())
 
+
     @torch.no_grad()
     def generate_cluster_demo(self, c_idx, layer_name, x):
         # TODO: update execution
 
         device = torch.device('cuda')
-        z = np.random.randn(1, 512)
-        z = torch.from_numpy(z).to(device)
+        # z = np.random.randn(1, 512)
+        # z = torch.from_numpy(z).to(device)
 
         skips_out, replaced_w = self.appended_net(x)
-
         skips_out.reverse()
-        ws = self.mapping(z, None, truncation_psi=1, truncation_cutoff=None, update_emas=False)
+        
+#         ws = self.mapping(z, None, truncation_psi=1, truncation_cutoff=None, update_emas=False)
+#         ws = ws.to(torch.float32).unbind(dim=1)
 
-        ws = ws.to(torch.float32).unbind(dim=1)
         replaced_w = replaced_w.to(torch.float32).unbind(dim=1)
         x = upfirdn2d.filter2d(skips_out[0], self.synthesis.filter / self.synthesis.filter.sum()) if self.synthesis.blur_sigma else skips_out[0]
         x = self.synthesis.input(x)
-        for idx, (name, w, s) in enumerate(zip(self.synthesis.layer_names, ws[1:], self.synthesis.encoder_receive)):
+        for idx, (name, w, s) in enumerate(zip(self.synthesis.layer_names, replaced_w[1:], self.synthesis.encoder_receive)):
             layer = getattr(self.synthesis, name)
             if s:
               concat = torch.nn.functional.pad(skips_out[s-1],(10,10,10,10), mode='reflect')
+              concat = upfirdn2d.filter2d(concat, self.synthesis.filter / self.synthesis.filter.sum()) if self.synthesis.blur_sigma else concat
               x = torch.cat([x,concat],dim=1)
-            if layer.is_torgb and self.synthesis.encode_rgb:
-              x = layer(x, replaced_w[-1])
-            elif idx < len(replaced_w[1:]):
-              x = layer(x, replaced_w[1:][idx])
-            else:
-              x = layer(x, w)
+            
+            x = layer(x, w)
             
             if name == layer_name:
               x = torch.nn.functional.pad(x.detach(),[-10,-10,-10,-10])
               x = x.to(torch.float32).add(1).div(4).clamp(0, 1)
               return self.grid_cluster(x, layer.cluster, c_idx, img_per_row=4)
+
+
 
 
 #----------------------------------------------------------------------------
