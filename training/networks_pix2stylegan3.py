@@ -373,7 +373,7 @@ class SynthesisLayer(torch.nn.Module):
     def set_op(self, op):
       self.op = op
 
-    def forward(self, x, w, noise_mode='random', force_fp32=False, update_emas=False, op = None):
+    def forward(self, x, w, noise_mode='random', force_fp32=False, update_emas=False, execute_op = False):
         assert noise_mode in ['random', 'const', 'none'] # unused
         # misc.assert_shape(x, [None, self.in_channels, int(self.in_size[1]), int(self.in_size[0])])
         misc.assert_shape(w, [x.shape[0], self.w_dim])
@@ -404,17 +404,18 @@ class SynthesisLayer(torch.nn.Module):
 
         ######## op
 
-        if op is not None:
+        if execute_op:
           # print(f'in: {x.shape}')
-          x_d = affine(x, angle=op["angle"], translate=op['translate'], scale=op['scale'], shear=0)
-          x_d = erosion(x_d, torch.ones((op["erosion"], op["erosion"]),dtype=dtype).to(self.device)) if op["erosion"] else x_d
-          x_d = dilation(x_d, torch.ones((op["dilation"], op["dilation"]),dtype=dtype).to(self.device)) if op["dilation"] else x_d
+          x_d = affine(x, angle=self.op["angle"], translate=self.op['translate'], scale=self.op['scale'], shear=0)
+          x_d = erosion(x_d, torch.ones((self.op["erosion"], self.op["erosion"]),dtype=dtype).to(self.device)) if self.op["erosion"] else x_d
+          x_d = dilation(x_d, torch.ones((self.op["dilation"], self.op["dilation"]),dtype=dtype).to(self.device)) if self.op["dilation"] else x_d
           
-          sl = torch.zeros_like(self.cluster,dtype=torch.bool).to(self.device)
-          for c in self.op['cluster']:
-            sl += self.cluster == c
-          sl = sl.unsqueeze(0).unsqueeze(2).unsqueeze(3).repeat([1,1,x.shape[2],x.shape[3]])
-          x_d = torch.where(sl,x_d,x)
+          if self.op['cluster'] != -1:
+            print('op executed')
+            sl = self.cluster == self.op['cluster']
+            sl = sl.unsqueeze(0).unsqueeze(2).unsqueeze(3).repeat([1,1,x.shape[2],x.shape[3]])
+            x_d = torch.where(sl,x_d,x)
+            # print(self.cluster.shape)
 
           x = x_d
 

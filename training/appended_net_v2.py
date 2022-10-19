@@ -16,7 +16,8 @@ class DownConv2dLayer(torch.nn.Module):
         paddings        = 0,
         bias            = True,
         activation      = 'lrelu',
-        is_fp16         = False
+        is_fp16         = False,
+        clamp = 256
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -25,12 +26,13 @@ class DownConv2dLayer(torch.nn.Module):
         self.is_fp16 = is_fp16
         self.padding = paddings
         self.weight = torch.nn.Parameter(torch.randn([self.out_channels, self.in_channels, kernel_size, kernel_size]))
-
+        
         self.bias = torch.nn.Parameter(torch.zeros([self.out_channels]))
         self.weight_gain = 1 / np.sqrt(in_channels * (kernel_size ** 2))
         self.act = torch.nn.LeakyReLU(0.2) if activation=='lrelu' else None
         self.register_buffer('magnitude_ema', torch.ones([]))
-
+        self.batch_norm = torch.nn.BatchNorm2d(out_channels)
+        self.clamp = clamp
     
     def forward(self, x, gain=None):
       dtype = torch.float16 if self.is_fp16 else torch.float32
@@ -41,6 +43,10 @@ class DownConv2dLayer(torch.nn.Module):
       x = torch.nn.functional.conv2d(x, w, b, stride = 1, padding = self.padding)
       if self.act is not None:
         x = self.act(x)
+        x = self.batch_norm(x)
+        
+      x = x.clamp(-self.clamp,self.clamp)
+    
       if gain is not None:
         x = x * gain
       # print(x.shape)
@@ -65,7 +71,7 @@ class ResConvBlock(torch.nn.Module):
         self.paddings = paddings 
         self.conv1 = DownConv2dLayer(in_channels, mid_channels, kernel_size = kernel_size, paddings = kernel_size//2, bias = True, activation = activation, is_fp16 = is_fp16)
         self.conv2 = DownConv2dLayer(mid_channels, out_channels, kernel_size = kernel_size, paddings = kernel_size//2, bias = True, activation = activation, is_fp16 = is_fp16)
-        self.batch_norm = torch.nn.BatchNorm2d(out_channels)
+        # self.batch_norm = torch.nn.BatchNorm2d(out_channels)
         self.scale_factor = scale_factor
         if not scale_factor == 1:
           self.pool = torch.nn.AvgPool2d(2)
@@ -87,7 +93,7 @@ class ResConvBlock(torch.nn.Module):
       # x = torch.nn.functional.pad(x,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
       
       x = short_cut.add_(x)
-      x = self.batch_norm(x)
+      
       x = torch.nn.functional.leaky_relu(x, 0.2)
 
       # x = torch.nn.functional.pad(x,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
@@ -232,7 +238,7 @@ class AppendedNet(torch.nn.Module):
         # encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  4,  3,  2,  1,  0],
         layer_fp16 = [],
         num_appended_ws = 3,
-        spli_idx = 2,
+        spli_idx = 3,
     ):
         super().__init__()
         self.spli_idx = spli_idx
@@ -278,7 +284,7 @@ class AppendedNet(torch.nn.Module):
         paddings = 10
         print(f'padding {paddings}')
 
-        self.in_proj = DownConv2dLayer(p_dim[0], encoder_channels[0], 1, paddings = 0, bias=True, activation='lrelu', is_fp16 = layer_fp16[0])
+        self.in_proj = DownConv2dLayer(p_dim[0], encoder_channels[0]//2, 1, paddings = 0, bias=True, activation='lrelu', is_fp16 = layer_fp16[0])
         # self.in_proj = ResConvBlock(p_dim[0], encoder_channels[0], encoder_channels[0], kernel_size=3, paddings = 1, scale_factor = 1, is_fp16 = layer_fp16[0])
 
         self.down_names = []
@@ -286,7 +292,7 @@ class AppendedNet(torch.nn.Module):
 
         for idx, (c,r,fp,ct) in enumerate(zip(encoder_channels, encoder_out_res, layer_fp16, encoder_connect_to)):
 
-          c_in = c
+          c_in = c//2 if idx == 0 else c
           c_mid = c
           c_out = c if idx == len(encoder_channels)-1 else encoder_channels[idx+1]
           scale_factor = 0.5 if idx == 0 else r/encoder_out_res[idx-1]
@@ -302,9 +308,25 @@ class AppendedNet(torch.nn.Module):
              self.down_spl_names = []
              split_res = out_size
              for split_idx in range(int(log2(out_size))-2):
+                if split_res == 256:
+                  in_c = 64
+                  out_c = 128
+                if split_res == 128:
+                  in_c = 128
+                  out_c = 128
+                elif split_res == 64:
+                  in_c = 128
+                  out_c = 512
+                elif split_res == 32:
+                  in_c = 512
+                  out_c = 512
+                else:
+                  in_c = 512
+                  out_c = 512
                 split_res = split_res//2
-                in_c = c_out if split_idx == 0 else 512
-                layer = ResConvBlock(in_c,512,512, kernel_size=3, paddings = 0, scale_factor = 0.5, is_fp16 = computed_fp)
+                
+                # in_c = c_out if split_idx == 0 else 512
+                layer = ResConvBlock(in_c,in_c,out_c, kernel_size=3, paddings = 0, scale_factor = 0.5, is_fp16 = computed_fp)
                 name = f'SPL{split_idx}_R{split_res}_C{in_c}'
                 self.down_spl_names.append(name)
                 print(f'{name}\t fp16: {computed_fp}')
