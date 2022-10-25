@@ -278,7 +278,7 @@ def main(**kwargs):
             c.G_kwargs.use_radial_filters = True # Use radially symmetric downsampling filters.
             c.loss_kwargs.blur_init_sigma = 10 # Blur the images seen by the discriminator.
             # c.loss_kwargs.blur_fade_kimg = c.batch_size * 200 / 32 # Fade out the blur during the first N kimg.
-            c.loss_kwargs.blur_fade_kimg = c.batch_size * 220 / 32 # Fade out the blur during the first N kimg.
+            c.loss_kwargs.blur_fade_kimg = c.batch_size * 300 / 32 # Fade out the blur during the first N kimg.
         if opts.cfg == 'stylegan3-r':
             c.G_kwargs.conv_kernel = 1 # Use 1x1 convolutions.
             c.G_kwargs.channel_base *= 2 # Double the number of feature maps.
