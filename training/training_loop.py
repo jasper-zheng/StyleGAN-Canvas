@@ -71,9 +71,9 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 #----------------------------------------------------------------------------
 
 class Preprocess(torch.nn.Module):
-    def __init__(self, blur_sigma = 13, scale_factor = 0.1, out_size = 256):
+    def __init__(self, blur_sigma = 9, scale_factor = 0.1, out_size = 256):
         super().__init__()
-        # self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
+        self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
         self.device = torch.device('cuda')
         self.blur_size = np.floor(blur_sigma * 3)
         self.blur_sigma = blur_sigma
@@ -92,7 +92,7 @@ class Preprocess(torch.nn.Module):
         #   f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
         #   img_tensor = upfirdn2d.filter2d(img_tensor, f / f.sum())
         
-#         img_tensor = self.filter(img_tensor*0.5+1).clamp(0,1)*2-1
+        img_tensor = self.filter(img_tensor*0.5+1).clamp(0,1)*2-1
         # print(img_tensor.shape)
     
         # img_tensor = torch.nn.functional.interpolate(img_tensor, scale_factor = self.scale_factor)
@@ -309,7 +309,7 @@ def training_loop(
         # print(images.shape)
         # print(grid_p[0].shape)
         grid_z = torch.randn([labels.shape[0], G.z_dim], device=device).split(batch_gpu)
-        images = torch.cat([G_ema(z=z, c=c, skips_in=p, noise_mode='const').cpu() for z, c, p in zip(grid_z, grid_c, grid_p)]).numpy()
+        images = torch.cat([G(z=z, c=c, skips_in=p, noise_mode='const').cpu() for z, c, p in zip(grid_z, grid_c, grid_p)]).numpy()
         
         save_image_grid(grid_p_no_split.cpu(), os.path.join(run_dir, 'cond_init.png'), drange=[-1,1], grid_size=grid_size)
         save_image_grid(images, os.path.join(run_dir, 'fakes_init.png'), drange=[-1,1], grid_size=grid_size)
@@ -503,7 +503,7 @@ def training_loop(
 
         # Save image snapshot.
         if (rank == 0) and (image_snapshot_ticks is not None) and (done or cur_tick % image_snapshot_ticks == 0):
-            images = torch.cat([G_ema(z=z, c=c, skips_in=p, noise_mode='const').cpu() for z, c, p in zip(grid_z, grid_c, grid_p)]).numpy()
+            images = torch.cat([G(z=z, c=c, skips_in=p, noise_mode='const').cpu() for z, c, p in zip(grid_z, grid_c, grid_p)]).numpy()
             save_image_grid(images, os.path.join(run_dir, f'fakes{cur_nimg//1000:06d}.png'), drange=[-1,1], grid_size=grid_size)
 
         # Save network snapshot.
