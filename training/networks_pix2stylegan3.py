@@ -365,8 +365,12 @@ class SynthesisLayer(torch.nn.Module):
         self.cla_classes = out_channels
         self.cla_in_res = self.out_size[0]-20
         self.cla_num_layers = int(log2(self.cla_in_res)-3)
+        
+        self.op = None
+        self.cluster = None
     
     def set_cluster(self, c):
+      print('cluster set')
       self.cluster = c.to(self.device)
     
     def set_op(self, op):
@@ -374,7 +378,7 @@ class SynthesisLayer(torch.nn.Module):
 
     def forward(self, x, w, noise_mode='random', force_fp32=False, update_emas=False, execute_op = False):
         assert noise_mode in ['random', 'const', 'none'] # unused
-        misc.assert_shape(x, [None, self.in_channels, int(self.in_size[1]), int(self.in_size[0])])
+        # misc.assert_shape(x, [None, self.in_channels, int(self.in_size[1]), int(self.in_size[0])])
         misc.assert_shape(w, [x.shape[0], self.w_dim])
 
         # Track input magnitude.
@@ -401,23 +405,21 @@ class SynthesisLayer(torch.nn.Module):
         x = filtered_lrelu.filtered_lrelu(x=x, fu=self.up_filter, fd=self.down_filter, b=self.bias.to(x.dtype),
             up=self.up_factor, down=self.down_factor, padding=self.padding, gain=gain, slope=slope, clamp=self.conv_clamp)
 
-        ######## op
-
-        if execute_op:
+        # if execute_op and self.op is not None:
+        #     pass
+        if execute_op and self.op is not None:
           # print(f'in: {x.shape}')
           x_d = affine(x, angle=self.op["angle"], translate=self.op['translate'], scale=self.op['scale'], shear=0)
           x_d = erosion(x_d, torch.ones((self.op["erosion"], self.op["erosion"]),dtype=dtype).to(self.device)) if self.op["erosion"] else x_d
           x_d = dilation(x_d, torch.ones((self.op["dilation"], self.op["dilation"]),dtype=dtype).to(self.device)) if self.op["dilation"] else x_d
-          
-          if self.op['cluster'] != -1:
-            print('op executed')
-            sl = self.cluster == self.op['cluster']
-            sl = sl.unsqueeze(0).unsqueeze(2).unsqueeze(3).repeat([1,1,x.shape[2],x.shape[3]])
-            x_d = torch.where(sl,x_d,x)
-            # print(self.cluster.shape)
+          x_d = x_d.mul(self.op["multiply"])
+          sl = torch.zeros_like(self.cluster,dtype=torch.bool).to(self.device)
+          for c in self.op['cluster']:
+            sl += self.cluster == c
+          sl = sl.unsqueeze(0).unsqueeze(2).unsqueeze(3).repeat([1,1,x.shape[2],x.shape[3]])
+          x_d = torch.where(sl,x_d,x)
 
           x = x_d
-
         # Ensure correct shape and dtype.
         # misc.assert_shape(x, [None, self.out_channels, int(self.out_size[1]), int(self.out_size[0])])
         assert x.dtype == dtype, 'dtype error'
@@ -494,8 +496,7 @@ class SynthesisNetwork(torch.nn.Module):
         # skip_connection     = [0, 0, 0, 0,  0],
         encoder_receive     = [],
         encoder_receive_c   = [],
-        has_operation = [],
-                 
+        has_operation       = [],
         bottleneck_size     = 16,
         encode_rgb          = 1,
         blur_sigma          = 3,
@@ -594,10 +595,11 @@ class SynthesisNetwork(torch.nn.Module):
                 op[name] = {
                     "erosion": 0,
                     "dilation": 0,
+                    "multiply": 1,
                     "angle": 0,
                     "scale": 1,
                     "translate": [0,0],
-                    "cluster": -1
+                    "cluster":[]
                 }
         with open(f'{f_path}/operation_template.json', 'w') as file:
             json.dump(op, file,indent=4)
@@ -619,17 +621,22 @@ class SynthesisNetwork(torch.nn.Module):
         if skips is None:
           assert False, 'missing skip inputs'
 
+        # print(len(self.layer_names))
+        # print(len(ws[1:]))
+        # print(len(skips))
         for idx, (name, w, s, has_op) in enumerate(zip(self.layer_names, replaced_w[1:], self.encoder_receive, self.has_operation)):
             # print(name)
             # print(x.shape)
             layer = getattr(self, name)
             if s:
+              # print(f'x: {x.shape}')
+              # print(f's: {skip.shape}')
 
               concat = torch.nn.functional.pad(skips[s-1],(10,10,10,10), mode='reflect')
-            
-              concat = upfirdn2d.filter2d(concat, self.filter / self.filter.sum()) if self.blur_sigma else concat
+              concat = upfirdn2d.filter2d(concat, self.filter / self.filter.sum()) if self.blur_sigma else skips[0]
               x = torch.cat([x,concat],dim=1)
 
+            # op = operations[name] if name in operations.keys() else None
             x = layer(x, w, execute_op = has_op and execute_op, **layer_kwargs)
 
 
@@ -642,7 +649,39 @@ class SynthesisNetwork(torch.nn.Module):
         return x
 
     def set_receive(self, r):
-      self.encoder_receive = r
+        self.encoder_receive = r
+
+    def update_op(self, layer_name, op):
+        layer = getattr(self, layer_name)
+        layer.set_op(op)
+
+    def reset_layer_op(self, layer_name):
+        layer = getattr(self, layer_name)
+        if layer.op is not None:
+          layer.set_op({
+                  'erosion': 0,
+                  'dilation': 0,
+                  'multiply': 1,
+                  'angle': 0,
+                  'scale': 1,
+                  'translate': [0, 0],
+                  'cluster': []
+              })
+        else:
+          print(f'{layer_name} op is not initialised')
+
+    def reset_all_op(self):
+        for name, has_op in zip(self.layer_names, self.has_operation):
+          if has_op:
+              self.update_op(name, {
+                  'erosion': 0,
+                  'dilation': 0,
+                  'multiply': 1,
+                  'angle': 0,
+                  'scale': 1,
+                  'translate': [0, 0],
+                  'cluster': []
+              })
 
     def extra_repr(self):
         return '\n'.join([
@@ -665,31 +704,29 @@ class Generator(torch.nn.Module):
         mapping_kwargs      = {},   # Arguments for MappingNetwork.
         projecting_img_dim  = (3,256,256),
 
+        # g_channels_res     = [256, 256, 256, 256, 256, 128, 128, 128, 64, 64, 32, 32, 16, 16, 16],
+        # encoder_out_res    = [128, 64, 64, 32, 32, 16, 16,  16,   8,   4],
+        # encoder_channels   = [ 64,128,128,256,256,512,512, 512,1024,1024],
+        # encoder_connect_to = [  0,  0,  5,  0,  4,  3,  2,   1,   0,   0],
+        # encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  5,  0,  4,  0,  3,  0,   2],
+        # encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,256,  0,512,  0,512,  0, 512],
+
+        # g_channels_res     = [256, 256, 256, 256, 256, 128, 128, 128, 64, 64, 32, 32, 16, 16, 16],
+        # encoder_out_res    = [128, 64, 64, 32, 32, 32, 16, 16,  16],
+        # encoder_channels   = [ 64,128,128,256,256,256,512,512, 512],
+        # encoder_connect_to = [  0,  0,  0,  0,  0,  4,  3,  2,   1],
+        # encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  4,  0,  3,  0,   2],
+        # encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,512,  0,512,  0, 512],
+        # has_operation      = [  0,   0,   0,   0,   0,   0,   0,   0,  1,  1,  1,  0,  0,  0,   0],
+        
         g_channels_res     = [256, 256, 256, 256, 256, 128, 128, 128, 64, 64, 32, 32,  16, 16, 16],
         encoder_out_res    = [128, 64, 64, 32, 32, 32,  16,  16,  16],
         encoder_channels   = [ 64,128,256,512,512,512, 512,1024,1024],
         encoder_connect_to = [  0,  0,  0,  0,  0,  4,   3,   2,   1],
         encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  4,  0,   3,  0,   2],
         encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,512,  0,1024,  0,1024],
-        has_operation      = [  0,   0,   0,   0,   0,   0,   0,   0,  1,  1,  1,  1,  1,  1,   1],
-
-        # g_channels_res     = [256, 256, 256, 256, 256, 128, 128, 128, 64, 64, 32, 32, 16, 16, 16],
-        # encoder_out_res    = [128, 64, 64, 32, 32, 32, 16, 16,  16],
-        # encoder_channels   = [128,256,256,512,512,512,512,512, 512],
-        # encoder_connect_to = [  0,  0,  0,  0,  0,  4,  3,  2,   1],
-        # encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  4,  0,  3,  0,   2],
-        # encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,512,  0,512,  0, 512],
-        # has_operation      = [  0,   0,   0,   0,   0,   0,   0,   0,  1,  1,  1,  1,  1,  1,   1],
+        has_operation      = [  0,   0,   0,   0,   0,   0,   0,   1,  1,  1,  1,  1,   1,  1,   1],
                  
-        # g_channels_res     = [256, 256, 256, 256, 256, 128, 128, 128, 64, 64, 32, 32, 16, 16, 16],
-        # encoder_out_res    = [128, 64, 64, 32, 32, 16, 16,  16],
-        # encoder_channels   = [128,256,256,512,512,512,512, 512],
-        # encoder_connect_to = [  0,  0,  0,  0,  0,  3,  2,   1],
-        # encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  0,  0,  3,  0,   2],
-        # encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  0,  0,512,  0, 512],
-        # has_operation      = [  0,   0,   0,   0,   0,   0,   0,   0,  1,  1,  1,  1,  1,  0,   0],
-
-
         bottleneck_size    = 16,
         connection_start        = 0,
         connection_end          = 11,
@@ -747,7 +784,7 @@ class Generator(torch.nn.Module):
         # print(skips_in.shape)
         skips_out, replaced_w = self.appended_net(skips_in)
         # print(len(skips_out))
-        
+
         skips_out.reverse()
 
         # ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
@@ -756,21 +793,30 @@ class Generator(torch.nn.Module):
         return img
 
     @torch.no_grad()
-    def generate_cluster_for_layer(self, layer_idx, classifier_bottleneck, classifier_path, skips_in, num_clusters = 5):
+    def generate_cluster_for_layer(self, 
+                                   layer_idx, 
+                                   classifier_bottleneck, 
+                                   classifier_path, 
+                                   skips_in, 
+                                   num_clusters = 5, 
+                                   cur_cluster_selection = 0, 
+                                   div = 4, 
+                                   img_per_row=4, 
+                                   row = 6):
         device = torch.device('cuda')
-        z = np.random.randn(1, 512)
-        z = torch.from_numpy(z).to(device)
+        # z = np.random.randn(1, 512)
+        # z = torch.from_numpy(z).to(device)
 
         skips_out, replaced_w = self.appended_net(skips_in)
-
         skips_out.reverse()
-        ws = self.mapping(z, None, truncation_psi=1, truncation_cutoff=None, update_emas=False)
-
-        ws = ws.to(torch.float32).unbind(dim=1)
+        
+        # ws = self.mapping(z, None, truncation_psi=1, truncation_cutoff=None, update_emas=False)
+        # ws = ws.to(torch.float32).unbind(dim=1)
+        
         replaced_w = replaced_w.to(torch.float32).unbind(dim=1)
         x = upfirdn2d.filter2d(skips_out[0], self.synthesis.filter / self.synthesis.filter.sum()) if self.synthesis.blur_sigma else skips_out[0]
         x = self.synthesis.input(x)
-        for idx, (name, w, s) in enumerate(zip(self.synthesis.layer_names, ws[1:], self.synthesis.encoder_receive)):
+        for idx, (name, w, s) in enumerate(zip(self.synthesis.layer_names, replaced_w[1:], self.synthesis.encoder_receive)):
             layer = getattr(self.synthesis, name)
             if s:
               concat = torch.nn.functional.pad(skips_out[s-1],(10,10,10,10), mode='reflect')
@@ -782,8 +828,15 @@ class Generator(torch.nn.Module):
             if idx == layer_idx:
               print(f'clustering {name}')
               
-              x = torch.nn.functional.pad(x.detach(),[-10,-10,-10,-10])
-              x = x.to(torch.float32).add(1).div(4).clamp(0, 1)
+              x = torch.nn.functional.pad(x.detach(),[-10,-10,-10,-10]).to(torch.float32)
+              
+              for x_idx, c in enumerate(x[0]):
+                div_max = max(abs(c.min()), abs(c.max()))
+                sub_mean = c.mean()
+                x[0,x_idx,:,:].copy_(c.sub(sub_mean).div(div_max).sub(c.sub(sub_mean).div(div_max).min()).clamp(0,1))
+            
+              # x = x.to(torch.float32).add(1).div(div).clamp(0, 1)
+                
               c = x[0].unsqueeze(1).mul(2).add(-1)
               classifier = FeatureClassifier(layer.cla_num_layers,
                                             layer.cla_classes,
@@ -798,8 +851,8 @@ class Generator(torch.nn.Module):
               cluster_ids_x = classifier.get_cluster(vec, num_clusters)
               
               layer.set_cluster(cluster_ids_x)
-              return self.grid_clusters(x, cluster_ids_x.to(device), num_clusters, img_per_row=12)
-
+              # return self.grid_clusters(x, cluster_ids_x.to(device), num_clusters, img_per_row=20)
+              return self.grid_cluster(x, layer.cluster, cur_cluster_selection, img_per_row=img_per_row, row = row)
     
     @torch.no_grad()
     def grid_clusters(self, x_show, cluster_ids_x, num_clusters, img_per_row=15):
@@ -815,25 +868,20 @@ class Generator(torch.nn.Module):
         return to_pil_image(grid[0].cpu())
     
     @torch.no_grad()
-    def grid_cluster(self, x_show, cluster_ids_x, c_idx, img_per_row=15):
-        # grids = []
-        # for i in range(num_clusters):
-        #   x_select = x_show[:,cluster_ids_x == i,:,:]
-        #   g = make_grid(x_select[0,:img_per_row].unsqueeze(1).to(torch.float32), nrow = img_per_row).unsqueeze(0)
-        #   s = (50,img_per_row*50)
-        #   g = torch.nn.functional.interpolate(g, size=s, mode='bilinear')
-        #   grids.append(g)
-
-        # grid = torch.cat(grids,dim=2)
-        x_show = x_show[:,cluster_ids_x == c_idx,:,:]
-        grid = make_grid(x_show[0,:img_per_row*5].unsqueeze(1).to(torch.float32), nrow = img_per_row).unsqueeze(0)
-        s = (50*5,img_per_row*50)
+    def grid_cluster(self, x_show, cluster_ids_x, c_idx, img_per_row=15, row = 5):
+        print(f'cluster idx: {c_idx}')
+        if c_idx != -1:
+            x_show = x_show[:,cluster_ids_x == c_idx,:,:]
+        grid = make_grid(x_show[0,:img_per_row*row].unsqueeze(1).to(torch.float32), nrow = img_per_row).unsqueeze(0)
+        s = (50*row,img_per_row*50)
         grid = torch.nn.functional.interpolate(grid, size=s, mode='bilinear')
         return to_pil_image(grid[0].cpu())
+        
+            
 
 
     @torch.no_grad()
-    def generate_cluster_demo(self, c_idx, layer_name, x):
+    def generate_cluster_demo(self, c_idx, layer_name, x, div = 4, img_per_row=4, row = 6):
         # TODO: update execution
 
         device = torch.device('cuda')
@@ -859,9 +907,18 @@ class Generator(torch.nn.Module):
             x = layer(x, w)
             
             if name == layer_name:
-              x = torch.nn.functional.pad(x.detach(),[-10,-10,-10,-10])
-              x = x.to(torch.float32).add(1).div(4).clamp(0, 1)
-              return self.grid_cluster(x, layer.cluster, c_idx, img_per_row=4)
+              x = torch.nn.functional.pad(x.detach(),[-10,-10,-10,-10]).to(torch.float32)
+              for x_idx, c in enumerate(x[0]):
+                div_max = max(abs(c.min()), abs(c.max()))
+                sub_mean = c.mean()
+                x[0,x_idx,:,:].copy_(c.sub(sub_mean).div(div_max).sub(c.sub(sub_mean).div(div_max).min()).clamp(0,1))
+                
+              # x = x.to(torch.float32).add(1).div(div).clamp(0, 1)
+            
+              return self.grid_cluster(x, layer.cluster, c_idx, img_per_row=img_per_row, row = row)
+
+
+
 
 
 
