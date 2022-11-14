@@ -101,7 +101,7 @@ class StyleGAN2Loss(Loss):
             gen = upfirdn2d.filter2d(gen, f / f.sum())
             real = upfirdn2d.filter2d(real, f / f.sum())
         loss = torch.nn.functional.mse_loss(gen, real)
-        return loss
+        return loss * 4
 
     def run_vgg_loss(self, gen, real, blur_sigma):
       blur_size = np.floor(blur_sigma * 3)
