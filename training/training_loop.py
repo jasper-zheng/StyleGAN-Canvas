@@ -71,7 +71,7 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 #----------------------------------------------------------------------------
 
 class Preprocess(torch.nn.Module):
-    def __init__(self, blur_sigma = 31, scale_factor = 0.1, out_size = 256):
+    def __init__(self, blur_sigma = 21, scale_factor = 0.1, out_size = 256):
         super().__init__()
         # self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
         self.device = torch.device('cuda')
