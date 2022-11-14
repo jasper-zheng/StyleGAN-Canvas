@@ -777,10 +777,10 @@ class Generator(torch.nn.Module):
         device = torch.device('cuda')
         z = np.random.randn(1, 512)
         self.z = torch.from_numpy(z).to(device)
-        self.replace_w_num = 4
+        self.replace_w_num = 6
 
 
-    def forward(self, z, c, skips_in, truncation_psi=1, truncation_cutoff=None, update_emas=False, execute_op = False, replace_w_num = 4, **synthesis_kwargs):
+    def forward(self, z, c, skips_in, truncation_psi=1, truncation_cutoff=None, update_emas=False, execute_op = False, replace_w_num = 6, **synthesis_kwargs):
         # print(skips_in.shape)
         skips_out, replaced_w = self.appended_net(skips_in)
         # print(len(skips_out))

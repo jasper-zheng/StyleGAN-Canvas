@@ -60,23 +60,26 @@ class StyleGAN2Loss(Loss):
         self.pl_mean            = torch.zeros([], device=device)
         self.blur_init_sigma    = blur_init_sigma
         self.blur_fade_kimg     = blur_fade_kimg
-        # self.vgg_loss           = VGGLoss()
+        self.vgg_loss           = VGGLoss()
 
-    def run_G(self, z, c, cond_img = None, update_emas=False):
+    def run_G(self, z, c, cond_img = None, update_emas=False, replace_w_num = 6):
         # skips_out = reversed(self.G.appended_net(cond_img)) if cond_img is not None else None
         skips_out, replaced_w = self.G.appended_net(cond_img)
         skips_out.reverse()
 
-        # ws = self.G.mapping(z, c, update_emas=update_emas)
+        ws = self.G.mapping(z, c, update_emas=update_emas)
+        ws[:,:replace_w_num].copy_(replaced_w[:,:replace_w_num])
+        
         # if self.style_mixing_prob > 0:
         #     with torch.autograd.profiler.record_function('style_mixing'):
         #         cutoff = torch.empty([], dtype=torch.int64, device=ws.device).random_(1, ws.shape[1])
         #         cutoff = torch.where(torch.rand([], device=ws.device) < self.style_mixing_prob, cutoff, torch.full_like(cutoff, ws.shape[1]))
         #         ws[:, cutoff:] = self.G.mapping(torch.randn_like(z), c, update_emas=False)[:, cutoff:]
-        # img = self.G.synthesis(ws, skips = skips_out, update_emas=update_emas)
-        img = self.G.synthesis(replaced_w, skips = skips_out, update_emas=update_emas)
         
-        return img, replaced_w
+        img = self.G.synthesis(ws, skips = skips_out, update_emas=update_emas)
+        # img = self.G.synthesis(replaced_w, skips = skips_out, update_emas=update_emas)
+        
+        return img, ws
 
     def run_D(self, img, c, blur_sigma=0, update_emas=False, grid_size = None):
         blur_size = np.floor(blur_sigma * 3)
@@ -102,6 +105,9 @@ class StyleGAN2Loss(Loss):
 
     def run_vgg_loss(self, gen, real, blur_sigma):
       blur_size = np.floor(blur_sigma * 3)
+      gen = torch.nn.functional.interpolate(gen,size=(224,224))
+      real = torch.nn.functional.interpolate(real,size=(224,224))
+      
       if blur_size > 0:
           f = torch.arange(-blur_size, blur_size + 1, device=gen.device).div(blur_sigma).square().neg().exp2()
           gen = upfirdn2d.filter2d(gen, f / f.sum())
@@ -143,7 +149,7 @@ class StyleGAN2Loss(Loss):
 
                 # loss_Gtarget = torch.nn.functional.mse_loss(gen_img, real_img_tmp)
                 if use_vgg:
-                  loss_Gtarget = self.run_vgg_loss(gen_img, real_img_tmp, blur_sigma=blur_sigma) * 0.2
+                  loss_Gtarget = self.run_vgg_loss(gen_img, real_img_tmp, blur_sigma=blur_sigma)
                 else:
                   loss_Gtarget = self.run_mse(gen_img, real_img_tmp, blur_sigma=blur_sigma)
                 
@@ -240,10 +246,12 @@ class StyleGAN2Loss(Loss):
 
 class VGGLoss(torch.nn.Module):
     def __init__(self, gpu_ids=0):
-        super(VGGLoss, self).__init__()        
-        self.vgg = Vgg19().cuda()
-        self.criterion = torch.nn.L1Loss()
-        self.weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]        
+        super(VGGLoss, self).__init__()   
+        device = torch.device('cuda')
+        self.vgg = Vgg19().to(device)
+        self.criterion = torch.nn.L1Loss().to(device)
+        self.weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]   
+        # self.weights = [0, 0, 1.0/8, 1.0/4, 1.0]   
 
     def forward(self, x, y):              
         x_vgg, y_vgg = self.vgg(x), self.vgg(y)
@@ -285,3 +293,4 @@ class Vgg19(torch.nn.Module):
         h_relu5 = self.slice5(h_relu4)                
         out = [h_relu1, h_relu2, h_relu3, h_relu4, h_relu5]
         return out
+

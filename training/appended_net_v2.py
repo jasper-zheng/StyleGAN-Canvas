@@ -32,7 +32,7 @@ class DownConv2dLayer(torch.nn.Module):
         self.weight_gain = 1 / np.sqrt(in_channels * (kernel_size ** 2))
         self.act = torch.nn.LeakyReLU(0.2) if activation=='lrelu' else None
         self.register_buffer('magnitude_ema', torch.ones([]))
-        self.batch_norm = torch.nn.BatchNorm2d(out_channels)
+        # self.batch_norm = torch.nn.BatchNorm2d(out_channels)
         self.clamp = clamp
         self.stride = stride
     
@@ -43,7 +43,7 @@ class DownConv2dLayer(torch.nn.Module):
       b = self.bias.to(dtype)
       # print(w.shape)
       x = torch.nn.functional.conv2d(x, w, b, stride = self.stride, padding = self.padding)
-      x = self.batch_norm(x)
+      # x = self.batch_norm(x)
         
       if self.act is not None:
         x = self.act(x)
@@ -79,6 +79,8 @@ class ResConvBlock(torch.nn.Module):
           self.stride = 2
         else:
           self.stride = 1
+        
+        self.batch_norm = torch.nn.BatchNorm2d(in_channels)
         self.conv1 = DownConv2dLayer(in_channels, mid_channels, kernel_size = kernel_size, paddings = kernel_size//2, stride = 1, bias = True, activation = activation, is_fp16 = is_fp16)
         self.conv2 = DownConv2dLayer(mid_channels, out_channels, kernel_size = kernel_size, paddings = kernel_size//2, stride = self.stride, bias = True, activation = 'linear', is_fp16 = is_fp16)
         
@@ -92,6 +94,9 @@ class ResConvBlock(torch.nn.Module):
       x = x.to(dtype)
       # if not self.scale_factor == 1:
       #   x = self.pool(x)
+        
+      x = self.batch_norm(x)
+    
       short_cut = self.skip_mapping(x, gain=self.gain_sqrt)
       x = self.conv1(x)
       x = self.conv2(x, gain=self.gain_sqrt)
