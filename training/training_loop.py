@@ -71,14 +71,15 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 #----------------------------------------------------------------------------
 
 class Preprocess(torch.nn.Module):
-    def __init__(self, blur_sigma = 9, scale_factor = 0.1, out_size = 256):
+    def __init__(self, blur_sigma = 31, scale_factor = 0.1, out_size = 256):
         super().__init__()
-        self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
+        # self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
         self.device = torch.device('cuda')
         self.blur_size = np.floor(blur_sigma * 3)
         self.blur_sigma = blur_sigma
         self.scale_factor = scale_factor
         self.out_size = out_size
+        self.f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
     @torch.no_grad()
     def preprocess_to_conditions(self, img_tensor):
         '''
@@ -87,26 +88,13 @@ class Preprocess(torch.nn.Module):
         return: 
             img_tensor: [-1,1]
         '''
+        img_tensor = torch.nn.functional.interpolate(img_tensor, size = (self.out_size,self.out_size), mode='bilinear')
+        img_tensor = torch.nn.functional.pad(img_tensor, (30,30,30,30), 'reflect')
+        img_tensor = upfirdn2d.filter2d(img_tensor, self.f / self.f.sum())
+        img_tensor = torch.nn.functional.pad(img_tensor, (-30,-30,-30,-30))
         
-        # with torch.autograd.profiler.record_function('blur'):
-        #   f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
-        #   img_tensor = upfirdn2d.filter2d(img_tensor, f / f.sum())
-        
-        img_tensor = self.filter(img_tensor*0.5+1).clamp(0,1)*2-1
-        # print(img_tensor.shape)
-    
-        # img_tensor = torch.nn.functional.interpolate(img_tensor, scale_factor = self.scale_factor)
-        # img_tensor = torch.nn.functional.interpolate(img_tensor, size = (self.out_size,self.out_size), mode='bilinear')
         return img_tensor
         
-
-# def preprocess_to_conditions(real_imgs, blur_sigma = 10):
-#   blur_size = np.floor(blur_sigma * 3)
-#   with torch.autograd.profiler.record_function('blur'):
-#     f = torch.arange(-blur_size, blur_size + 1, device=real_imgs.device).div(blur_sigma).square().neg().exp2()
-#     blr_imgs = upfirdn2d.filter2d(real_imgs, f / f.sum())
-  
-#   return blr_imgs
 
 
 #----------------------------------------------------------------------------
@@ -579,3 +567,4 @@ def training_loop(
         print('Exiting...')
 
 #----------------------------------------------------------------------------
+

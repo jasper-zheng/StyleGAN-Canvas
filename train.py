@@ -125,7 +125,7 @@ def parse_comma_separated_list(s):
 
 # Required.
 @click.option('--outdir',       help='Where to save the results', metavar='DIR',                required=True)
-@click.option('--cfg',          help='Base configuration',                                      type=click.Choice(['stylegan3-t', 'stylegan3-r', 'pix2stylegan3-r', 'stylegan2']), required=True)
+@click.option('--cfg',          help='Base configuration',                                      type=click.Choice(['stylegan3-t', 'stylegan3-r', 'pix2stylegan3-r', 'pix2stylegan3-t', 'stylegan2']), required=True)
 @click.option('--data',         help='Training data', metavar='[ZIP|DIR]',                      type=str, required=True)
 @click.option('--gpus',         help='Number of GPUs to use', metavar='INT',                    type=click.IntRange(min=1), required=True)
 @click.option('--batch',        help='Total batch size', metavar='INT',                         type=click.IntRange(min=1), required=True)
@@ -278,6 +278,16 @@ def main(**kwargs):
             c.G_kwargs.use_radial_filters = True # Use radially symmetric downsampling filters.
             c.loss_kwargs.blur_init_sigma = 10 # Blur the images seen by the discriminator.
             # c.loss_kwargs.blur_fade_kimg = c.batch_size * 200 / 32 # Fade out the blur during the first N kimg.
+            c.loss_kwargs.blur_fade_kimg = c.batch_size * 220 / 32 # Fade out the blur during the first N kimg.
+        if opts.cfg == 'pix2stylegan3-t':
+            c.G_kwargs.connection_start        = opts.connection_start
+            c.G_kwargs.connection_end          = opts.connection_end
+            c.G_kwargs.connection_grow_from    = opts.connection_grow_from
+            c.G_kwargs.num_appended_ws         = opts.replaced_ws
+            c.connection_grow_step    = opts.connection_grow_step
+            c.connection_grow_kimg    = opts.connection_grow_kimg
+            c.loss_kwargs.blur_init_sigma = 10 # Blur the images seen by the discriminator.
+            # c.loss_kwargs.blur_fade_kimg = c.batch_size * 200 / 32 # Fade out the blur during the first N kimg.
             c.loss_kwargs.blur_fade_kimg = c.batch_size * 300 / 32 # Fade out the blur during the first N kimg.
         if opts.cfg == 'stylegan3-r':
             c.G_kwargs.conv_kernel = 1 # Use 1x1 convolutions.
@@ -330,3 +340,4 @@ if __name__ == "__main__":
     main() # pylint: disable=no-value-for-parameter
 
 #----------------------------------------------------------------------------
+

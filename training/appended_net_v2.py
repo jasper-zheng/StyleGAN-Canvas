@@ -14,10 +14,11 @@ class DownConv2dLayer(torch.nn.Module):
         out_channels,                   # Number of output channels.
         kernel_size,                    # Width and height of the convolution kernel.
         paddings        = 0,
+        stride          = 1,
         bias            = True,
         activation      = 'lrelu',
         is_fp16         = False,
-        clamp = 256
+        clamp = 512
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -33,6 +34,7 @@ class DownConv2dLayer(torch.nn.Module):
         self.register_buffer('magnitude_ema', torch.ones([]))
         self.batch_norm = torch.nn.BatchNorm2d(out_channels)
         self.clamp = clamp
+        self.stride = stride
     
     def forward(self, x, gain=None):
       dtype = torch.float16 if self.is_fp16 else torch.float32
@@ -40,10 +42,12 @@ class DownConv2dLayer(torch.nn.Module):
       w = (self.weight * self.weight_gain).to(dtype)
       b = self.bias.to(dtype)
       # print(w.shape)
-      x = torch.nn.functional.conv2d(x, w, b, stride = 1, padding = self.padding)
+      x = torch.nn.functional.conv2d(x, w, b, stride = self.stride, padding = self.padding)
+      x = self.batch_norm(x)
+        
       if self.act is not None:
         x = self.act(x)
-        x = self.batch_norm(x)
+        
         
       x = x.clamp(-self.clamp,self.clamp)
     
@@ -69,34 +73,32 @@ class ResConvBlock(torch.nn.Module):
         self.in_channels = in_channels
         self.is_fp16 = is_fp16
         self.paddings = paddings 
-        self.conv1 = DownConv2dLayer(in_channels, mid_channels, kernel_size = kernel_size, paddings = kernel_size//2, bias = True, activation = activation, is_fp16 = is_fp16)
-        self.conv2 = DownConv2dLayer(mid_channels, out_channels, kernel_size = kernel_size, paddings = kernel_size//2, bias = True, activation = activation, is_fp16 = is_fp16)
-        # self.batch_norm = torch.nn.BatchNorm2d(out_channels)
         self.scale_factor = scale_factor
         if not scale_factor == 1:
-          self.pool = torch.nn.AvgPool2d(2)
+          # self.pool = torch.nn.AvgPool2d(2)
+          self.stride = 2
+        else:
+          self.stride = 1
+        self.conv1 = DownConv2dLayer(in_channels, mid_channels, kernel_size = kernel_size, paddings = kernel_size//2, stride = 1, bias = True, activation = activation, is_fp16 = is_fp16)
+        self.conv2 = DownConv2dLayer(mid_channels, out_channels, kernel_size = kernel_size, paddings = kernel_size//2, stride = self.stride, bias = True, activation = 'linear', is_fp16 = is_fp16)
+        
         # self.skip_mapping = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, padding = 0, bias=True, dtype=torch.float16 if is_fp16 else torch.float32, padding_mode='reflect') if not in_channels == out_channels else torch.nn.Identity()
-        self.skip_mapping = DownConv2dLayer(in_channels, out_channels, kernel_size=1, paddings = 0, bias=True, activation='linear', is_fp16 = is_fp16) if not in_channels == out_channels else torch.nn.Identity()
-
+        # self.skip_mapping = DownConv2dLayer(in_channels, out_channels, kernel_size=1, paddings = 0, bias=True, activation='linear', is_fp16 = is_fp16) if not in_channels == out_channels else torch.nn.Identity()
+        self.skip_mapping = DownConv2dLayer(in_channels, out_channels, kernel_size=1, stride = self.stride, paddings = 0, bias=True, activation='linear', is_fp16 = is_fp16)
+        self.gain_sqrt = np.sqrt(0.5)
 
     def forward(self, x):
       dtype = torch.float16 if self.is_fp16 else torch.float32
       x = x.to(dtype)
-      if not self.scale_factor == 1:
-        # x = torch.nn.functional.interpolate(x, scale_factor=self.scale_facto, mode='nearest')
-        x = self.pool(x)
-      short_cut = self.skip_mapping(x) * np.sqrt(0.5)
-      # short_cut = torch.nn.functional.pad(short_cut,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
-      # print(f'shortcut:{short_cut.shape}')
+      # if not self.scale_factor == 1:
+      #   x = self.pool(x)
+      short_cut = self.skip_mapping(x, gain=self.gain_sqrt)
       x = self.conv1(x)
-      x = self.conv2(x, gain=np.sqrt(0.5))
-      # x = torch.nn.functional.pad(x,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
-      
+      x = self.conv2(x, gain=self.gain_sqrt)
+    
       x = short_cut.add_(x)
       
       x = torch.nn.functional.leaky_relu(x, 0.2)
-
-      # x = torch.nn.functional.pad(x,(self.paddings,self.paddings,self.paddings,self.paddings), mode='reflect')
 
       return x
 
@@ -215,7 +217,6 @@ class AppendEpilogue(torch.nn.Module):
 
     def forward(self, x):
       x = x.mean([2,3])
-      # x = self.flatten(x)
       x = self.mapping_in(x)
       x = self.mapping(x, None)
 
@@ -238,7 +239,7 @@ class AppendedNet(torch.nn.Module):
         # encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,  0,  0,  4,  3,  2,  1,  0],
         layer_fp16 = [],
         num_appended_ws = 3,
-        spli_idx = 3,
+        spli_idx = 1,
     ):
         super().__init__()
         self.spli_idx = spli_idx
@@ -284,7 +285,7 @@ class AppendedNet(torch.nn.Module):
         paddings = 10
         print(f'padding {paddings}')
 
-        self.in_proj = DownConv2dLayer(p_dim[0], encoder_channels[0]//2, 1, paddings = 0, bias=True, activation='lrelu', is_fp16 = layer_fp16[0])
+        self.in_proj = DownConv2dLayer(p_dim[0], encoder_channels[0]//2, 1, paddings = 0, stride = 1, bias=True, activation='lrelu', is_fp16 = layer_fp16[0])
         # self.in_proj = ResConvBlock(p_dim[0], encoder_channels[0], encoder_channels[0], kernel_size=3, paddings = 1, scale_factor = 1, is_fp16 = layer_fp16[0])
 
         self.down_names = []
@@ -299,70 +300,64 @@ class AppendedNet(torch.nn.Module):
           out_size = int(out_size*scale_factor)
           computed_fp = r>=32
           layer = ResConvBlock(c_in, c_mid, c_out, kernel_size=3, paddings = 0, scale_factor = scale_factor, is_fp16 = computed_fp)
-          # out_size = int(0.5*out_size) if count>0 else out_size
           name = f'AL{idx}_R{out_size}_C{c_out}_{ct}'
           self.down_names.append(name)
           print(f'{name}\t fp16: {computed_fp}')
           setattr(self, name, layer)
-          if idx == self.spli_idx:
-             self.down_spl_names = []
-             split_res = out_size
-             for split_idx in range(int(log2(out_size))-2):
-                if split_res == 256:
-                  in_c = 64
-                  out_c = 128
-                if split_res == 128:
-                  in_c = 128
-                  out_c = 128
-                elif split_res == 64:
-                  in_c = 128
-                  out_c = 512
-                elif split_res == 32:
-                  in_c = 512
-                  out_c = 512
-                else:
-                  in_c = 512
-                  out_c = 512
-                split_res = split_res//2
-                
-                # in_c = c_out if split_idx == 0 else 512
-                layer = ResConvBlock(in_c,in_c,out_c, kernel_size=3, paddings = 0, scale_factor = 0.5, is_fp16 = computed_fp)
-                name = f'SPL{split_idx}_R{split_res}_C{in_c}'
-                self.down_spl_names.append(name)
-                print(f'{name}\t fp16: {computed_fp}')
-                setattr(self, name, layer)
+#           if idx == self.spli_idx:
+#              self.down_spl_names = []
+#              split_res = out_size
+#              for split_idx in range(int(log2(out_size))-2):
+#                 if split_res == 256:
+#                   in_c = 512
+#                   out_c = 512
+#                 if split_res == 128:
+#                   in_c = 512
+#                   out_c = 512
+#                 elif split_res == 64:
+#                   in_c = 256
+#                   out_c = 512
+#                 elif split_res == 32:
+#                   in_c = 512
+#                   out_c = 512
+#                 else:
+#                   in_c = 512
+#                   out_c = 512
+#                 split_res = split_res//2
+#                 layer = ResConvBlock(in_c,in_c,out_c, kernel_size=3, paddings = 0, scale_factor = 0.5, is_fp16 = computed_fp)
+#                 name = f'SPL{split_idx}_R{split_res}_C{in_c}'
+#                 self.down_spl_names.append(name)
+#                 print(f'{name}\t fp16: {computed_fp}')
+#                 setattr(self, name, layer)
              
-             self.epilogue = AppendEpilogue(512, split_res, 512, self.num_appended_ws)
+#              self.epilogue = AppendEpilogue(512, split_res, 512, self.num_appended_ws)
 
         print(f'last skip shape: {out_size}')
 
-        # self.epilogue = AppendEpilogue(c_out, out_size, 512, self.num_appended_ws)
+        self.epilogue = AppendEpilogue(c_out, out_size, 512, self.num_appended_ws)
 
 
   def forward(self, x, num_appended_ws_len = None):
-    # x = torch.nn.functional.pad(x,(10,10,10,10),mode='reflect')
     x = self.in_proj(x.to(torch.float16))
     skips = []
-    # if self.in_scale is not None:
-    #     x = self.in_scale(x)
-        # print(f'-> {x.shape}')
-        # print("scale")
     for idx, (name, ct) in enumerate(zip(self.down_names, self.encoder_connect_to)):
       layer = getattr(self,name)
       x = layer(x)
       if ct:
         skips.append(x)
-      if idx == self.spli_idx:
-        ws = x
-        for spl_idx, spl_name in enumerate(self.down_spl_names):
-            # print(spl_name)
-            layer = getattr(self,spl_name)
-            ws = layer(ws)
+#       if idx == self.spli_idx:
+#         ws = x
+#         for spl_idx, spl_name in enumerate(self.down_spl_names):
+#             # print(spl_name)
+#             layer = getattr(self,spl_name)
+#             ws = layer(ws)
         
-        ws = self.epilogue(ws.to(torch.float32))
-    # x = self.epilogue(x)
+#         ws = self.epilogue(ws.to(torch.float32))
+    ws = self.epilogue(x.to(torch.float32))
 
     return skips, ws
+
+
 
 
 

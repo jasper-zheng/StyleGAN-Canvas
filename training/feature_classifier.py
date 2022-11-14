@@ -4,6 +4,8 @@ from torch import nn
 from torch.nn import functional as F
 from torch.autograd import Function
 
+from kmeans_pytorch import kmeans
+
 #based on https://github.com/pytorch/vision/blob/master/torchvision/models/shufflenetv2.py
 def channel_shuffle(x, groups):
     # type: (torch.Tensor, int) -> torch.Tensor
@@ -72,14 +74,14 @@ class InvertedResidual(nn.Module):
         return out
 
 class FeatureClassifier(nn.Module):
-    def __init__(self, num_layers, classes, in_res, bottleneck=20, output_channels = 100):
+    def __init__(self, num_layers, classes, in_res, bottleneck=20):
         super().__init__()
 
         # self.num_layers = layer_depth_dict[layer_depth]
         self.num_layers = num_layers
         self.bottleneck = bottleneck
         input_channels = 1
-        # output_channels = 100
+        output_channels = 100
         # classes = layer_class_dict[layer_depth]
         self.classes = classes
         self.first_conv = nn.Sequential(
@@ -99,6 +101,11 @@ class FeatureClassifier(nn.Module):
         print(f'FeatureClassifier bottleneck: ({output_channels}, {out_res}, {out_res})')
         self.shuffleLayers = nn.Sequential(shuffle_layers_dict)
         
+        # self.final_conv = nn.Sequential(
+        #     nn.Conv2d(input_channels, output_channels, 1, 1, 0, bias=False),
+        #     nn.BatchNorm2d(output_channels),
+        #     nn.ReLU(inplace=True),
+        # )
         self.fc_bottleneck = nn.Linear(output_channels, self.bottleneck)
         self.fc_out = nn.Linear(self.bottleneck, self.classes)
 
@@ -112,3 +119,12 @@ class FeatureClassifier(nn.Module):
         feat_vec = self.fc_bottleneck(x)
         class_probs = self.fc_out(feat_vec)
         return feat_vec, class_probs
+
+
+    def get_cluster(self, vec, num_clusters):
+        cluster_ids_x, _ = kmeans(X=vec, 
+                                  num_clusters=num_clusters, 
+                                  distance='euclidean', 
+                                  device=torch.device('cuda'))
+        return cluster_ids_x
+
