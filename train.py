@@ -160,7 +160,7 @@ def parse_comma_separated_list(s):
 @click.option('--connection-start',    help='idx of layer that skip connections start from', metavar='INT', type=click.IntRange(min=0), default=0, show_default=True)
 @click.option('--connection-end',      help='idx of layer that skip connections end', metavar='INT', type=click.IntRange(min=0), default=12, show_default=True)
 @click.option('--connection-grow-from',help='grow skip connections from', metavar='INT', type=click.IntRange(min=0), default=4, show_default=True)
-@click.option('--replaced-ws',         help='encode the first N extended w+ latent space', metavar='INT', type=click.IntRange(min=0,max=15), default=6, show_default=True)
+@click.option('--replaced-ws',         help='encode the first N extended w+ latent space', metavar='INT', type=click.IntRange(min=0,max=15), default=15, show_default=True)
 @click.option('--connection-grow-kimg',help='grow connection after the first N kimg', metavar='INT', type=click.IntRange(min=0), default=9999999, show_default=True)
 @click.option('--connection-grow-step',help='grow connection after each N kimg', metavar='INT', type=click.IntRange(min=0), default=96, show_default=True)
 @click.option('--encode-rgb',   help='Encode the latent for to_rgb layer', metavar='INT',       type=click.IntRange(min=0), default=0, show_default=True)
