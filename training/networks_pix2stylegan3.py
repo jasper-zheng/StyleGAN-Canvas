@@ -644,7 +644,7 @@ class SynthesisNetwork(torch.nn.Module):
 #             x = layer(x, w, execute_op = has_op and execute_op, **layer_kwargs)
 
             if s:
-                concat = torch.nn.functional.pad(skips[s-1],(11,11,11,11), mode='reflect')
+                concat = torch.nn.functional.pad(skips[s-1],(10,10,10,10), mode='reflect')
                 x = layer(x, w, skip = concat, execute_op = has_op and execute_op, **layer_kwargs)
             else:
                 x = layer(x, w, skip = None, execute_op = has_op and execute_op, **layer_kwargs)
@@ -719,8 +719,8 @@ class Generator(torch.nn.Module):
         encoder_out_res    = [128, 64, 64,  32,  32,  16,  16,  16,   8,   4],
         encoder_channels   = [ 64,128,256, 512, 512, 512, 512, 512, 512, 512],
         encoder_connect_to = [  0,  0,  0,   5,   4,   3,   2,   1,   0,   0],
-        encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   5,   4,   0,   3,   2],
-        encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 512, 512,   0, 512, 512],
+        encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   5,   4,   3,   2,   0],
+        encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 512, 512, 512, 512,   0],
         has_operation      = [  0,   0,   0,   0,   0,   0,   0,   1,   1,   1,   1,   1,   1,   1,   1],
                  
         bottleneck_size    = 16,
@@ -777,10 +777,10 @@ class Generator(torch.nn.Module):
         device = torch.device('cuda')
         z = np.random.randn(1, 512)
         self.z = torch.from_numpy(z).to(device)
-        self.replace_w_num = 6
+        self.replace_w_num = 4
 
 
-    def forward(self, z, c, skips_in, truncation_psi=1, truncation_cutoff=None, update_emas=False, execute_op = False, replace_w_num = 6, **synthesis_kwargs):
+    def forward(self, z, c, skips_in, truncation_psi=1, truncation_cutoff=None, update_emas=False, execute_op = False, replace_w_num = 4, **synthesis_kwargs):
         # print(skips_in.shape)
         skips_out, replaced_w = self.appended_net(skips_in)
         # print(len(skips_out))
@@ -789,9 +789,10 @@ class Generator(torch.nn.Module):
         # z = z if z is not None else self.z
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
         
-        ws[:,:replace_w_num].copy_(replaced_w[:,:replace_w_num])
+        # ws[:,:replace_w_num].copy_(replaced_w[:,:replace_w_num])
+        replaced_w[:,replace_w_num:].copy_(ws[:,replace_w_num:])
         
-        img = self.synthesis(ws, skips = skips_out, update_emas=update_emas, execute_op = execute_op, **synthesis_kwargs)
+        img = self.synthesis(replaced_w, skips = skips_out, update_emas=update_emas, execute_op = execute_op, **synthesis_kwargs)
         return img
     
     
@@ -813,15 +814,16 @@ class Generator(torch.nn.Module):
 
         ws = self.mapping(self.z, None, truncation_psi=1, truncation_cutoff=None, update_emas=False)
         
-        ws[:,:self.replace_w_num].copy_(replaced_w[:,:self.replace_w_num])
+        # ws[:,:self.replace_w_num].copy_(replaced_w[:,:self.replace_w_num])
+        replaced_w[:,self.replace_w_num:].copy_(ws[:,self.replace_w_num:])
         
         # ws = self.mapping(z, None, truncation_psi=1, truncation_cutoff=None, update_emas=False)
         # ws = ws.to(torch.float32).unbind(dim=1)
         
-        ws = ws.to(torch.float32).unbind(dim=1)
+        replaced_w = replaced_w.to(torch.float32).unbind(dim=1)
         # x = upfirdn2d.filter2d(skips_out[0], self.synthesis.filter / self.synthesis.filter.sum()) if self.synthesis.blur_sigma else skips_out[0]
         x = self.synthesis.input(skips_out[0])
-        for idx, (name, w, s) in enumerate(zip(self.synthesis.layer_names, ws[1:], self.synthesis.encoder_receive)):
+        for idx, (name, w, s) in enumerate(zip(self.synthesis.layer_names, replaced_w[1:], self.synthesis.encoder_receive)):
             layer = getattr(self.synthesis, name)
             if s:
                 concat = torch.nn.functional.pad(skips_out[s-1],(11,11,11,11), mode='reflect')
@@ -908,12 +910,13 @@ class Generator(torch.nn.Module):
         skips_out.reverse()
         
         ws = self.mapping(self.z, None, truncation_psi=1, truncation_cutoff=None, update_emas=False)
-        ws[:,:self.replace_w_num].copy_(replaced_w[:,:self.replace_w_num])
-
-        ws = ws.to(torch.float32).unbind(dim=1)
+        # ws[:,:self.replace_w_num].copy_(replaced_w[:,:self.replace_w_num])
+        replaced_w[:,self.replace_w_num:].copy_(ws[:,self.replace_w_num:])
+        
+        replaced_w = replaced_w.to(torch.float32).unbind(dim=1)
         x = self.synthesis.input(skips_out[0])
         
-        for idx, (name, w, s) in enumerate(zip(self.synthesis.layer_names, ws[1:], self.synthesis.encoder_receive)):
+        for idx, (name, w, s) in enumerate(zip(self.synthesis.layer_names, replaced_w[1:], self.synthesis.encoder_receive)):
             layer = getattr(self.synthesis, name)
             if s:
                 concat = torch.nn.functional.pad(skips_out[s-1],(11,11,11,11), mode='reflect')
