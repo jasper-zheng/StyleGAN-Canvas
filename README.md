@@ -21,7 +21,7 @@ Motivated by active divergence ([Berns and Colton, 2020](http://computationalcre
 
 The model can be trained on a lower resolution and later expand to a larger canvas. The deblurring model is trained on 512x512 images and later expanded to 512x2048.  
 
-<img src='./docs/git_03.jpg' width='800px'>
+<img src='./docs/git_03.jpg' width='600px'>
 
 ### Generic image-to-image translation tasks
 
