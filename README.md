@@ -3,7 +3,7 @@
 <img src='./docs/git_cover.jpg' width='800px'>
 
 
-<a href="#"><img src="https://colab.research.google.com/assets/colab-badge.svg" height=22></a>  
+<a href="https://colab.research.google.com/github/jasper-zheng/pix2styleGAN3/blob/main/train_pix2stylegan3-r.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" height=22></a>  
 
  
 #### Expandable StyleGAN3 Canvas for Image-to-image Translation and Expressive Feature Exploration   
