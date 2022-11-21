@@ -1,3 +1,5 @@
+###### As a key element for MSc Advanced Project    
+
 # pixel2StyleGAN3  
 
 <img src='./docs/git_cover.jpg' width='800px'>
@@ -7,6 +9,10 @@
 
  
 #### Expandable StyleGAN3 Canvas for Image-to-image Translation and Expressive Feature Exploration   
+
+Shuoyang Zheng (Jasper)  
+
+[Paper](https://github.com/jasper-zheng/pix2styleGAN3/blob/main/msc_thesis_jasper.pdf)  
 
 We present a new framework for real-time feature exploration and manipulation using style-based image-conditional generative adversarial networks. Our framework follows previously introduced [StyleGAN3](https://github.com/NVlabs/stylegan3) architecture, extends it for image-to-image translation tasks by appending a feature extraction encoder that creates low-level skip connections to the generator. We first demonstrate that our framework solves a variety of image-to-image translation tasks while maintaining the image quality and the internal behaviour of StyleGAN3. Our approach also induces an extendable canvas that can be trained on a lower resolution and later expanded to a larger resolution. Next, implement our framework on network bending, and build a graphic interface for real-time interaction with the model's internal features. Finally, we conduct qualitative human opinion studies to evaluate its usability in the creative context, and demonstrate its potential to broaden the possibility for expressive outcomes to emerge.   
 
@@ -94,4 +100,21 @@ class Preprocess(torch.nn.Module):
 The proposed architecture includes an appended encoder network facilitating feature extraction and the StyleGAN3 mapping and synthesis network. The encoder is based on a U-net architecture with standard ResNet backbone, encoding an image into a 512-dimensional latent vector. Meanwhile, it creates skip connections that directly map features from the encoder into the StyleGAN3 synthesis network to preserve locality bias. We found that adding skip connections between only lower-level layers (i.e. feature maps with smaller resolution) is sufficient for it to shuttle precise features while preserving the internal behaviour of StyleGAN3 (i.e. encode phase information instead of signal magnitudes).  
 
 In addition, as StyleGAN3 replaced the first generator layer with a frequency sampler with Fourier features to define a spatially infinite map, and therefore facilitate translation and rotation of the input, however, we propose extracting the first generator layer directly from the encoder, allowing the generator to inherit exact sub-pixel position. We show results from models with this architecture trained for a variety of image-to-image translation tasks while maintaining the image quality of StyleGAN3.   
+
+## Credits   
+
+**Alias-Free Generative Adversarial Networks**  
+https://github.com/NVlabs/stylegan3   
+
+**Network Bending**  
+https://github.com/terrybroad/network-bending   
+
+**pix2pixHD**  
+https://github.com/NVIDIA/pix2pixHD  
+
+**Flickr-Faces-HQ Dataset (FFHQ)**  
+https://github.com/NVlabs/ffhq-dataset  
+
+**Landscapes High-Quality (LHQ)**  
+https://universome.github.io/alis.html  
 
