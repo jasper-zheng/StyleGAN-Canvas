@@ -1,4 +1,4 @@
-###### As a key element for MSc Advanced Project    
+###### MSc Advanced Project    
 
 # pixel2StyleGAN3  
 
