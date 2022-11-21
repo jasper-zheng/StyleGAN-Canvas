@@ -26,10 +26,10 @@ The model can be trained on a lower resolution and later expand to a larger canv
 ### Generic image-to-image translation tasks
 
 #### Deblurring and Edge-to-Faces on FFHQ  
-<img src='./docs/git_05.jpg' width='500px'>
+<img src='./docs/git_05.jpg' width='600px'>
 
 #### Deblurring on LHQ  
-<img src='./docs/git_01.jpg' width='500px'>
+<img src='./docs/git_01.jpg' width='600px'>
 
 
 ## Rational  
