@@ -19,7 +19,9 @@ We present a new framework for real-time feature exploration and manipulation us
 ## Overview  
 Motivated by active divergence ([Berns and Colton, 2020](http://computationalcreativity.net/iccc20/papers/164-iccc20.pdf)), we propose an alternative approach to image-to-image translation that allows the features to be enlarged and interpolated after the network is trained. This provides an extendable generation canvas and significantly broadens the possibility for creative outcomes.
 
-<img src='./docs/cover.gif'>
+<img src='./docs/cover.gif'>   
+
+Deploying the model to real-time interface: [real-time-flask-model](https://github.com/jasper-zheng/realtime-flask-model)  
 
 ## Applications  
 
