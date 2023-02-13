@@ -1,25 +1,23 @@
-###### MSc Advanced Project    
 
-# pixel2StyleGAN3  
 
-<img src='./docs/git_cover.jpg' width='800px'>
+# StyleGAN-Canvas   
+
+<img src='./docs/cover.gif'>  
 
 
 <a href="https://colab.research.google.com/github/jasper-zheng/pix2styleGAN3/blob/main/train_pix2stylegan3-r.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" height=22></a>  
 
  
-#### Expandable StyleGAN3 Canvas for Image-to-image Translation and Expressive Feature Exploration   
+#### StyleGAN-Canvas: Augmenting StyleGAN3 for Real-Time Human-AI Co-Creation  
 
 Shuoyang Zheng (Jasper)  
 
 [Paper](https://github.com/jasper-zheng/pix2styleGAN3/blob/main/msc_thesis_jasper.pdf)  
 
-We present a new framework for real-time feature exploration and manipulation using style-based image-conditional generative adversarial networks. Our framework follows previously introduced [StyleGAN3](https://github.com/NVlabs/stylegan3) architecture, extends it for image-to-image translation tasks by appending a feature extraction encoder that creates low-level skip connections to the generator. We first demonstrate that our framework solves a variety of image-to-image translation tasks while maintaining the image quality and the internal behaviour of StyleGAN3. Our approach also induces an extendable canvas that can be trained on a lower resolution and later expanded to a larger resolution. Next, implement our framework on network bending, and build a graphic interface for real-time interaction with the model's internal features. Finally, we conduct qualitative human opinion studies to evaluate its usability in the creative context, and demonstrate its potential to broaden the possibility for expressive outcomes to emerge.   
+In this paper, we propose bridging the gap between StyleGAN3 and human-AI co-creative patterns by augmenting the latent variable model with the ability of image-conditional generation. We modify the existing generator architecture in StyleGAN3, enabling it to use high-level visual ideas to guide the human-AI co-creation. The resulting model, StyleGAN-Canvas, can solve various image-to-image translation tasks while maintaining the internal behaviour of StyleGAN3. We deploy our models to a real-time graphic interface and conduct qualitative human subject studies. We use the mixed initiative generative AI interfaces (MIGAI) framework to frame our findings and present a preliminary evaluation of our models’ usability in a generic co-creative context.
 
 ## Overview  
 Motivated by active divergence ([Berns and Colton, 2020](http://computationalcreativity.net/iccc20/papers/164-iccc20.pdf)), we propose an alternative approach to image-to-image translation that allows the features to be enlarged and interpolated after the network is trained. This provides an extendable generation canvas and significantly broadens the possibility for creative outcomes.
-
-<img src='./docs/cover.gif'>   
 
 Deploying the model to real-time interface: [real-time-flask-model](https://github.com/jasper-zheng/realtime-flask-model)  
 
