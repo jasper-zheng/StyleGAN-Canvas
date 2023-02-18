@@ -13,4 +13,5 @@ glfw==2.2.0
 pyopengl==3.1.5
 imageio-ffmpeg==0.4.3
 pyspng
-kaggle
+kornia
+kmeans_pytorch
