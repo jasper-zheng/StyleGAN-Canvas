@@ -92,8 +92,6 @@ class ResConvBlock(torch.nn.Module):
     def forward(self, x):
       dtype = torch.float16 if self.is_fp16 else torch.float32
       x = x.to(dtype)
-      # if not self.scale_factor == 1:
-      #   x = self.pool(x)
         
       x = self.batch_norm(x)
     
@@ -256,7 +254,7 @@ class AppendedNet(torch.nn.Module):
         self.encoder_connect_to = encoder_connect_to
         # self.encoder_receive = encoder_receive
         # self.skip_connection = skip_connection
-        print('hiiii appended net')
+        print('constructing feature encoder')
         self.device = torch.device('cuda')
         layer_fp16.reverse()
         self.layer_fp16 = layer_fp16
@@ -270,28 +268,13 @@ class AppendedNet(torch.nn.Module):
           self.skip_down_channels.append(int(c//1))
 
         self.skip_down_channels.reverse()
-        # self.skip_down_sizes.reverse()
-        # self.skip_connection.reverse()
-        # self.skip_scale.reverse()
-
-        # print(f'c: {self.skip_down_channels}')
-        # print(self.skip_down_sizes)
-        # print(self.skip_connection)
-        # print(self.skip_scale)
-        # assert len(self.skip_down_channels) == len(self.skip_down_sizes), f'what \n{self.skip_down_channels}\n{self.skip_down_sizes}'
-        # print(p_dim)
-        print(encoder_out_res)
-        print(encoder_connect_to)
-        print(encoder_channels)
+        print(f'encoder layer resolutions: {encoder_out_res}')
+        # print(encoder_connect_to)
+        print(f'encoder layer channels: {encoder_channels}')
         
-        ### compute paddings
-        # first_size = next((x for x in self.skip_down_sizes if x), None) #276
-        # paddings = (first_size - p_dim[1])//2
         paddings = 10
-        print(f'padding {paddings}')
 
         self.in_proj = DownConv2dLayer(p_dim[0], encoder_channels[0]//2, 1, paddings = 0, stride = 1, bias=True, activation='lrelu', is_fp16 = layer_fp16[0])
-        # self.in_proj = ResConvBlock(p_dim[0], encoder_channels[0], encoder_channels[0], kernel_size=3, paddings = 1, scale_factor = 1, is_fp16 = layer_fp16[0])
 
         self.down_names = []
         out_size = p_dim[1]
@@ -309,35 +292,7 @@ class AppendedNet(torch.nn.Module):
           self.down_names.append(name)
           print(f'{name}\t fp16: {computed_fp}')
           setattr(self, name, layer)
-#           if idx == self.spli_idx:
-#              self.down_spl_names = []
-#              split_res = out_size
-#              for split_idx in range(int(log2(out_size))-2):
-#                 if split_res == 256:
-#                   in_c = 512
-#                   out_c = 512
-#                 if split_res == 128:
-#                   in_c = 512
-#                   out_c = 512
-#                 elif split_res == 64:
-#                   in_c = 256
-#                   out_c = 512
-#                 elif split_res == 32:
-#                   in_c = 512
-#                   out_c = 512
-#                 else:
-#                   in_c = 512
-#                   out_c = 512
-#                 split_res = split_res//2
-#                 layer = ResConvBlock(in_c,in_c,out_c, kernel_size=3, paddings = 0, scale_factor = 0.5, is_fp16 = computed_fp)
-#                 name = f'SPL{split_idx}_R{split_res}_C{in_c}'
-#                 self.down_spl_names.append(name)
-#                 print(f'{name}\t fp16: {computed_fp}')
-#                 setattr(self, name, layer)
-             
-#              self.epilogue = AppendEpilogue(512, split_res, 512, self.num_appended_ws)
-
-        print(f'last skip shape: {out_size}')
+        print(f'bottleneck resolution: {out_size}')
 
         self.epilogue = AppendEpilogue(c_out, out_size, 512, self.num_appended_ws)
 
@@ -350,14 +305,6 @@ class AppendedNet(torch.nn.Module):
       x = layer(x)
       if ct:
         skips.append(x)
-#       if idx == self.spli_idx:
-#         ws = x
-#         for spl_idx, spl_name in enumerate(self.down_spl_names):
-#             # print(spl_name)
-#             layer = getattr(self,spl_name)
-#             ws = layer(ws)
-        
-#         ws = self.epilogue(ws.to(torch.float32))
     ws = self.epilogue(x.to(torch.float32))
 
     return skips, ws

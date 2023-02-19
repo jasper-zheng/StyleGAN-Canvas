@@ -410,6 +410,7 @@ class SynthesisLayer(torch.nn.Module):
         # Execute bias, filtered leaky ReLU, and clamping.
         gain = 1 if self.is_torgb else np.sqrt(2)
         slope = 1 if self.is_torgb else 0.2
+        
         x = filtered_lrelu.filtered_lrelu(x=x, fu=self.up_filter, fd=self.down_filter, b=self.bias.to(x.dtype),
             up=self.up_factor, down=self.down_factor, padding=self.padding, gain=gain, slope=slope, clamp=self.conv_clamp)
 
@@ -518,6 +519,9 @@ class SynthesisNetwork(torch.nn.Module):
         self.margin_size = margin_size
         self.output_scale = output_scale
         self.num_fp16_res = num_fp16_res
+        print(f'img_resolution:{img_resolution}')
+        if img_resolution == 256 or img_resolution == 128 :
+            self.num_fp16_res = 3
         self.encode_rgb = encode_rgb
         # self.skip_channels_idx = skip_channels_idx
         # self.skip_connection = skip_connection
@@ -569,7 +573,7 @@ class SynthesisNetwork(torch.nn.Module):
         self.blur_size = np.floor(self.blur_sigma * 3)
         f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
         self.register_buffer('filter', f)
-        
+        sizes_record = []
         for idx in range(self.num_layers + 1):
             prev = max(idx - 1, 0)
             is_torgb = (idx == self.num_layers)
@@ -579,7 +583,8 @@ class SynthesisNetwork(torch.nn.Module):
 
             c_in = int(channels[prev]) + encoder_receive_c[prev] if idx>0 else int(channels[prev])
 
-
+            sizes_record.append(int(sizes[idx])-20)
+            
             layer = SynthesisLayer(
                 w_dim=self.w_dim, is_torgb=is_torgb, is_critically_sampled=is_critically_sampled, use_fp16=use_fp16,
                 in_channels=c_in, out_channels=int(channels[idx]), skip_channels = encoder_receive_c[idx],
@@ -591,6 +596,7 @@ class SynthesisNetwork(torch.nn.Module):
             name = f'L{idx}_{layer.out_size[0]}_{layer.out_channels}'
             setattr(self, name, layer)
             self.layer_names.append(name)
+        print(f'SynthesisLayer resolution: {sizes_record}')
 
         assert len(self.layer_names) == len(self.has_operation), f'len(self.layer_names) dont match len(self.has_operation)'
         # self.reset_all_op()
@@ -715,9 +721,17 @@ class Generator(torch.nn.Module):
         projecting_img_dim  = (3,256,256),
 
         # 'pix2stylegan3-t'
-        g_channels_res     = [512, 512, 512, 512, 512, 256, 256, 128, 128,  64,  64,  32,  32,  16,  16],
-        encoder_out_res    = [128, 64, 64,  32,  32,  16,  16,  16,   8,   4],
-        encoder_channels   = [ 64,128,256, 512, 512, 512, 512, 512, 512, 512],
+        # g_channels_res     = [512, 512, 512, 512, 512, 256, 256, 128, 128,  64,  64,  32,  32,  16,  16],
+        # encoder_out_res    = [128, 64, 64,  32,  32,  16,  16,  16,   8,   4],
+        # encoder_channels   = [ 64,128,256, 512, 512, 512, 512, 512, 512, 512],
+        # encoder_connect_to = [  0,  0,  0,   5,   4,   3,   2,   1,   0,   0],
+        # encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   5,   4,   3,   2,   0],
+        # encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 512, 512, 512, 512,   0],
+        # has_operation      = [  0,   0,   0,   0,   0,   0,   0,   1,   1,   1,   1,   1,   1,   1,   1],
+        
+        g_channels_res     = [256, 256, 256, 256, 256, 128, 128, 128,  64,  64,  32,  32,  16,  16,  16],
+        encoder_out_res    = [128, 64, 32,  32,  16,  16,  16,  16,   8,   4],
+        encoder_channels   = [ 64,256,512, 512, 512, 512, 512, 512, 1024,1024],
         encoder_connect_to = [  0,  0,  0,   5,   4,   3,   2,   1,   0,   0],
         encoder_receive    = [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   5,   4,   3,   2,   0],
         encoder_receive_c  = [  0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 512, 512, 512, 512,   0],
@@ -727,7 +741,7 @@ class Generator(torch.nn.Module):
         connection_start        = 0,
         connection_end          = 11,
         connection_grow_from    = 4,
-        num_appended_ws         = 6,
+        num_appended_ws         = 15,
         encode_rgb              = True,
         blur_sigma              = 3,
         **synthesis_kwargs,         # Arguments for SynthesisNetwork.

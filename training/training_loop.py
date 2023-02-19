@@ -28,7 +28,8 @@ from metrics import metric_main
 
 from torch_utils.ops import upfirdn2d
 
-from training.canny_filter import CannyFilter
+# from training.canny_filter import CannyFilter
+from training.pipeline import Preprocess
 #----------------------------------------------------------------------------
 
 def setup_snapshot_image_grid(training_set, random_seed=0):
@@ -70,30 +71,30 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 
 #----------------------------------------------------------------------------
 
-class Preprocess(torch.nn.Module):
-    def __init__(self, blur_sigma = 21, scale_factor = 0.1, out_size = 256):
-        super().__init__()
-        # self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
-        self.device = torch.device('cuda')
-        self.blur_size = np.floor(blur_sigma * 3)
-        self.blur_sigma = blur_sigma
-        self.scale_factor = scale_factor
-        self.out_size = out_size
-        self.f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
-    @torch.no_grad()
-    def preprocess_to_conditions(self, img_tensor):
-        '''
-        parameter: 
-            img_tensor: [-1,1]
-        return: 
-            img_tensor: [-1,1]
-        '''
-        img_tensor = torch.nn.functional.interpolate(img_tensor, size = (self.out_size,self.out_size), mode='bilinear')
-        img_tensor = torch.nn.functional.pad(img_tensor, (30,30,30,30), 'reflect')
-        img_tensor = upfirdn2d.filter2d(img_tensor, self.f / self.f.sum())
-        img_tensor = torch.nn.functional.pad(img_tensor, (-30,-30,-30,-30))
+# class Preprocess(torch.nn.Module):
+#     def __init__(self, blur_sigma = 21, scale_factor = 0.1, out_size = 256):
+#         super().__init__()
+#         # self.filter = CannyFilter(k_gaussian=5,mu=0,sigma=5,k_sobel=5)
+#         self.device = torch.device('cuda')
+#         self.blur_size = np.floor(blur_sigma * 3)
+#         self.blur_sigma = blur_sigma
+#         self.scale_factor = scale_factor
+#         self.out_size = out_size
+#         self.f = torch.arange(-self.blur_size , self.blur_size  + 1, device=self.device).div(self.blur_sigma).square().neg().exp2()
+#     @torch.no_grad()
+#     def preprocess_to_conditions(self, img_tensor):
+#         '''
+#         parameter: 
+#             img_tensor: [-1,1]
+#         return: 
+#             img_tensor: [-1,1]
+#         '''
+#         img_tensor = torch.nn.functional.interpolate(img_tensor, size = (self.out_size,self.out_size), mode='bilinear')
+#         img_tensor = torch.nn.functional.pad(img_tensor, (30,30,30,30), 'reflect')
+#         img_tensor = upfirdn2d.filter2d(img_tensor, self.f / self.f.sum())
+#         img_tensor = torch.nn.functional.pad(img_tensor, (-30,-30,-30,-30))
         
-        return img_tensor
+#         return img_tensor
         
 
 
@@ -161,9 +162,9 @@ def training_loop(
     progress_fn             = None,     # Callback function for updating training progress. Called for all ranks.
     train_affine_layer      = False,
     switch_to_vgg           = 192,
-    gan_factor              = 0.3,
-    target_factor           = 0.8,
-    d_factor                = 1.3
+    gan_factor              = 1,
+    target_factor           = 1,
+    d_factor                = 1
 ):
     # Initialize.
     start_time = time.time()
@@ -197,16 +198,7 @@ def training_loop(
     D = dnnlib.util.construct_class_by_name(**D_kwargs, **common_kwargs).train().requires_grad_(False).to(device) # subclass of torch.nn.Module
     G_ema = copy.deepcopy(G).eval()
 
-    # if (append_to is not None) and (rank == 0):
-    #     print(f'Appended net to "{append_to}"')
-    #     with dnnlib.util.open_url(append_to) as f:
-    #         resume_data = legacy.load_network_pkl(f)
-    #     if append_from_resume:
-    #         print(f'Start new appended net from "{append_to}"')
-    #         for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
-    #             misc.copy_shaped_params_and_buffers(resume_data[name], module, require_all=False)
-    #     # G_plain = resume_data['G_ema'].eval().requires_grad_(False).to(device)
-
+    
     # Resume from existing pickle.
     if (resume_pkl is not None) and (rank == 0):
         print(f'Resuming from "{resume_pkl}"')
@@ -330,8 +322,7 @@ def training_loop(
     if progress_fn is not None:
         progress_fn(0, total_kimg)
 
-    # connection_grow_end = 
-    # 4 6 8 
+        
     while True:
 
         # Grow skip connections

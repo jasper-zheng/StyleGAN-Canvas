@@ -125,7 +125,7 @@ def parse_comma_separated_list(s):
 
 # Required.
 @click.option('--outdir',       help='Where to save the results', metavar='DIR',                required=True)
-@click.option('--cfg',          help='Base configuration',                                      type=click.Choice(['stylegan3-t', 'stylegan3-r', 'pix2stylegan3-r', 'pix2stylegan3-t', 'stylegan2']), required=True)
+@click.option('--cfg',          help='Base configuration',                                      type=click.Choice(['stylegan3-t', 'stylegan3-r', 'stylegan-canvas-r', 'stylegan-canvas-t', 'stylegan2']), required=True)
 @click.option('--data',         help='Training data', metavar='[ZIP|DIR]',                      type=str, required=True)
 @click.option('--gpus',         help='Number of GPUs to use', metavar='INT',                    type=click.IntRange(min=1), required=True)
 @click.option('--batch',        help='Total batch size', metavar='INT',                         type=click.IntRange(min=1), required=True)
@@ -263,9 +263,9 @@ def main(**kwargs):
         c.G_kwargs.fused_modconv_default = 'inference_only' # Speed up training by using regular convolutions instead of grouped convolutions.
         c.loss_kwargs.pl_no_weight_grad = True # Speed up path length regularization by skipping gradient computation wrt. conv2d weights.
     else:
-        c.G_kwargs.class_name = 'training.networks_pix2stylegan3.Generator'
+        c.G_kwargs.class_name = 'training.networks_stylegan_canvas.Generator'
         c.G_kwargs.magnitude_ema_beta = 0.5 ** (c.batch_size / (20 * 1e3))
-        if opts.cfg == 'pix2stylegan3-r':
+        if opts.cfg == 'stylegan-canvas-r':
             c.G_kwargs.conv_kernel = 1 # Use 1x1 convolutions.
             c.G_kwargs.channel_base *= 2 # Double the number of feature maps.
             c.G_kwargs.channel_max *= 2
@@ -279,7 +279,7 @@ def main(**kwargs):
             c.loss_kwargs.blur_init_sigma = 10 # Blur the images seen by the discriminator.
             # c.loss_kwargs.blur_fade_kimg = c.batch_size * 200 / 32 # Fade out the blur during the first N kimg.
             c.loss_kwargs.blur_fade_kimg = c.batch_size * 220 / 32 # Fade out the blur during the first N kimg.
-        if opts.cfg == 'pix2stylegan3-t':
+        if opts.cfg == 'stylegan-canvas-t':
             c.G_kwargs.connection_start        = opts.connection_start
             c.G_kwargs.connection_end          = opts.connection_end
             c.G_kwargs.connection_grow_from    = opts.connection_grow_from
