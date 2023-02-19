@@ -5,7 +5,7 @@
 <img src='./docs/cover.gif'>  
 
 
-<a href="https://colab.research.google.com/github/jasper-zheng/pix2styleGAN3/blob/main/train_pix2stylegan3-r.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" height=22></a>  
+<a href="https://colab.research.google.com/github/jasper-zheng/pix2styleGAN3/blob/main/stylegan-canvas-training.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" height=22></a>  
 
  
 #### StyleGAN-Canvas: Augmenting StyleGAN3 for Real-Time Human-AI Co-Creation  
