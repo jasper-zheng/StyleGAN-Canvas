@@ -15,3 +15,4 @@ imageio-ffmpeg==0.4.3
 pyspng
 kornia
 kmeans_pytorch
+gdown
