@@ -30,52 +30,29 @@ If you find the code or paper useful, please cite
 }
 ```
 
-## TODO
-- [ ] add demo colab notebook
-- [ ] revise the applications section
-- [ ] revise showcases
-- [ ] add links
-
 ## Examples  
-The primary aim of this research is to augment StyleGAN3 with image-conditional generation ability for a co-creative context. To achieve this, we adapt the existing model architecture in StyleGAN3, which takes a latent vector and a class label as the model’s input [[4](https://proceedings.neurips.cc/paper/2021/file/076ccd93ad68be51f23707988e934906-Paper.pdf)], and propose an encoder network to extract features from the conditional image. We also adapt the architecture previously applied to various image-to-image translation models [[17](https://arxiv.org/abs/1611.07004), [18](https://arxiv.org/abs/1711.11585), [19](https://arxiv.org/abs/1910.08914)] to connect the proposed encoder and StyleGAN3’s generator. The modified model, StyleGANCanvas, takes a latent vector and an accompanying image as inputs to guide the generation.  
 
 The canny edges model provides an alternative approach to local editing. Modifying edges in the condition image allows the model to alter semantical elements in the generation. We superimposed edges processed from other images to the original edges to add hair fringe, glasses and smile; we painted on the original edges to modify eyes and add sunglasses.   
+
 <img src='./docs/fig_editing.png' width='800px'>  
 
 The model for landscape photo generation was trained on the dataset with 512 × 512 resolution, taking inputs with 256×256 resolution. To enlarge the generation canvas, we doubled and tripled the width of inputs, expanding their resolution to 1024 × 256 and 768 × 256. Then, the expanded inputs were taken directly into the generator and convolved by each convolutional layer. Therefore, the expected output resolutions are 2048 × 512 and 1536 × 512. Additional training is not required during the experiment.  
+
 <img src='./docs/fig_large_git.png' width='800px'>  
 
 Sequence of editing performed on intermediate condition images to intentionally create unrealistic and novel outcomes.  
-<img src='./docs/fig_advanced_edit.png'>  
 
-## Overview  
-Motivated by active divergence ([Berns and Colton, 2020](http://computationalcreativity.net/iccc20/papers/164-iccc20.pdf)), we propose an alternative approach to image-to-image translation that allows the features to be enlarged and interpolated after the network is trained. This provides an extendable generation canvas and significantly broadens the possibility for creative outcomes.  
-
-Deploying the model to real-time interface: [real-time-flask-model](https://github.com/jasper-zheng/realtime-flask-model)  
-
-## Applications  
-
-### Expandable Canvas  
-
-The model can be trained on a lower resolution and later expand to a larger canvas. The deblurring model is trained on 512x512 images and later expanded to 512x2048.  
-
-<img src='./docs/git_03.jpg' width='600px'>
-
-### Generic image-to-image translation tasks
-
-#### Deblurring and Edge-to-Faces on FFHQ  
-<img src='./docs/git_05.jpg' width='600px'>
-
-#### Deblurring on LHQ  
-<img src='./docs/git_01.jpg' width='600px'>
+<img src='./docs/fig_advanced_edit.png' width='800px'>  
 
 ## Requirements  
 
 * 64-bit Python 3.8 and PyTorch 1.9.0 or later.   
-* CUDA toolkit 11.1 or later.  
-* GCC 7 or later (Linux) or Visual Studio (Windows) compilers.  
 * Python libraries: see [requirements.txt](./requirements.txt) for exact library dependencies:  
-  * `pip install -r requirements.txt`
+  * `pip install -r requirements.txt`  
+* StyleGAN3 requires compiling custom CUDA kernels on the fly. Therefore the following dependencies are needed:  
+  * CUDA toolkit 11.1 or later.  
+  * GCC 7 or later (Linux) or Visual Studio (Windows) compilers. Recommended GCC version depends on CUDA version.  
+
 
 ## Getting Started  
 
