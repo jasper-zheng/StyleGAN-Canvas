@@ -2,7 +2,7 @@
 
 # StyleGAN-Canvas   
 
-<img src='./docs/cover.gif'>  
+<img src='./docs/cover.gif' width='600px'>  
  
 #### StyleGAN-Canvas: Augmenting StyleGAN3 for Real-Time Human-AI Co-Creation  
 
@@ -36,9 +36,22 @@ If you find the code or paper useful, please cite
 - [ ] revise showcases
 - [ ] add links
 
+## Examples  
+The primary aim of this research is to augment StyleGAN3 with image-conditional generation ability for a co-creative context. To achieve this, we adapt the existing model architecture in StyleGAN3, which takes a latent vector and a class label as the model’s input [[4](https://proceedings.neurips.cc/paper/2021/file/076ccd93ad68be51f23707988e934906-Paper.pdf)], and propose an encoder network to extract features from the conditional image. We also adapt the architecture previously applied to various image-to-image translation models [[17](https://arxiv.org/abs/1611.07004), [18](https://arxiv.org/abs/1711.11585), [19](https://arxiv.org/abs/1910.08914)] to connect the proposed encoder and StyleGAN3’s generator. The modified model, StyleGANCanvas, takes a latent vector and an accompanying image as inputs to guide the generation.  
+
+### Local Editing  
+<img src='./docs/fig_editing.png' width='800px'>  
+
+
+### Deblurring model on [FFHQ](https://github.com/NVlabs/ffhq-dataset)    
+<img src='./docs/fig_ffhq_blur_l_git.png'>  
+
+
+### Deblurring model on [LHQ](https://arxiv.org/pdf/2104.06954v1.pdf)    
+<img src='./docs/fig_lhq_blur_git.png'>  
 
 ## Overview  
-Motivated by active divergence ([Berns and Colton, 2020](http://computationalcreativity.net/iccc20/papers/164-iccc20.pdf)), we propose an alternative approach to image-to-image translation that allows the features to be enlarged and interpolated after the network is trained. This provides an extendable generation canvas and significantly broadens the possibility for creative outcomes.
+Motivated by active divergence ([Berns and Colton, 2020](http://computationalcreativity.net/iccc20/papers/164-iccc20.pdf)), we propose an alternative approach to image-to-image translation that allows the features to be enlarged and interpolated after the network is trained. This provides an extendable generation canvas and significantly broadens the possibility for creative outcomes.  
 
 Deploying the model to real-time interface: [real-time-flask-model](https://github.com/jasper-zheng/realtime-flask-model)  
 
