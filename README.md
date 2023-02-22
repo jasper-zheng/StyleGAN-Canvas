@@ -6,16 +6,29 @@
  
 #### StyleGAN-Canvas: Augmenting StyleGAN3 for Real-Time Human-AI Co-Creation  
 
-Shuoyang Zheng (Jasper)  
+[Shuoyang Zheng (Jasper)](https://alaskawinter.cc/)   
+
+To be presented in the 4th HAI-GEN Workshop at the ACM Intelligent User Interfaces Workshops (ACM IUI 2023), March 2023, Sydney, Australia.   
 
 [[Paper]](https://github.com/jasper-zheng/pix2styleGAN3/blob/main/msc_thesis_jasper.pdf)  
 
-In this paper, we propose bridging the gap between StyleGAN3 and human-AI co-creative patterns by augmenting the latent variable model with the ability of image-conditional generation. We modify the existing generator architecture in StyleGAN3, enabling it to use high-level visual ideas to guide the human-AI co-creation. The resulting model, StyleGAN-Canvas, can solve various image-to-image translation tasks while maintaining the internal behaviour of StyleGAN3. We deploy our models to a real-time graphic interface and conduct qualitative human subject studies. We use the mixed initiative generative AI interfaces (MIGAI) framework to frame our findings and present a preliminary evaluation of our models’ usability in a generic co-creative context.
+In this paper, we propose bridging the gap between StyleGAN3 and human-AI co-creative patterns by augmenting the latent variable model with the ability of image-conditional generation. We modify the existing generator architecture in StyleGAN3, enabling it to use high-level visual ideas to guide the human-AI co-creation. The resulting model, StyleGAN-Canvas, can solve various image-to-image translation tasks while maintaining the internal behaviour of StyleGAN3. We deploy our models to a real-time graphic interface and conduct qualitative human subject studies. We use the mixed initiative generative AI interfaces (MIGAI) framework to frame our findings and present a preliminary evaluation of our models’ usability in a generic co-creative context.  
 
-## Colab Notebooks   
-
+Notebooks:  
  * Training <a href="https://colab.research.google.com/github/jasper-zheng/pix2styleGAN3/blob/main/stylegan-canvas-training.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" height=22></a>   
- * Inference <a href="https://colab.research.google.com/github/jasper-zheng/pix2styleGAN3/blob/main/stylegan-canvas-inference.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" height=22></a>  
+ * Inference <a href="https://colab.research.google.com/github/jasper-zheng/pix2styleGAN3/blob/main/stylegan-canvas-inference.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" height=22></a>   
+
+
+If you find the code or paper useful, please cite
+```bibtex
+@InProceedings{Zheng2023HAIGEN,
+  author         = {Shuoyang Zheng},
+  title          = {StyleGAN-Canvas: Augmenting StyleGAN3 for Real-Time Human-AI Co-Creation},
+  booktitle      = {Joint Proceedings of the ACM IUI Workshops 2023, March 2023, Sydney, Australia},
+  year           = {2023},
+  month          = {March}
+}
+```
 
 ## TODO
 - [ ] add demo colab notebook
