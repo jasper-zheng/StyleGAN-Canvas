@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+    <head>
+      <meta charset="utf-8">
+      <title>Live</title>
+      <style>
+        body {background-color: black; font-family: Arial; font-size: 13px; cursor: default;}
+        #videoElement {display: none;}
+        #canvasElement {border: 1px solid black;}
+        #photo {border: 1px solid black;}
+        #pauseBtn {position: absolute; bottom:8px; right: 104px}
+        #fileUploadContainer {position: absolute; bottom: 8px; right: 84px; text-align: center; padding-top: 1px; display: none}
+
+        #layerNames { width: 251px; position: relative; left: -2px}
+
+        #clusterLabels { margin-bottom: 15px; margin-left: 8px; display:inline; display:flex;}
+        #resetLayer { margin-bottom: 15px; position: absolute; right: 0; top: 57px}
+        #resetAll { margin-bottom: 15px}
+        #inputCanvas {position: absolute; right: 10px; top:10px;}
+        #inputCanvasX {position: absolute; right: 10px; top:10px;}
+        #outputCanvas {position: absolute; left: 0; width:512px; height:512px; transition: background 0.1s linear;}
+        #clusterNum {color: #FFB103; background-color: #191919; margin-top: 2px; margin-left: 3px; border: none; font-size: 14px}
+
+        .mainTable td{vertical-align: top; border: none; }
+        .mainTable {width: 1672px; border-spacing:2px}
+
+        .greyMask {filter: grayscale(100%);}
+
+        .displays {width: 937px; height: 512px; position: relative; margin-bottom: 2px}
+        .canvasContainer {width: 355px; height: 301px; background-color: #191919; position: absolute; bottom: 0; border-radius: 4px;}
+        .inputBtnDisact {outline-style: solid; outline-width: 1px; outline-color: #AAAAAA; color: #8F8F8F;  z-index: 3}
+        .inputBtnDisact svg {stroke: #8F8F8F }
+        .inputBtnAct {outline-style: none; color: #FFB103; z-index: 2}
+        .inputBtnAct svg {stroke: #FFB103 }
+        .inputBtn {width: 78px; background: #191919; position: relative; border-style: none;}
+        .btnText {position: absolute; width: 66px; bottom: 32px}
+
+        .controllersTable td {width: 120px; border:none}
+        .controllersTable {border-spacing:0; line-height: 13px}
+        .slidecontainer{position: relative;width: 100px}
+        .slider {position: relative; width: 100%; height: 18px; margin-bottom: 4px; -webkit-appearance: none; appearance: none;background: #DCDCDC; overflow: hidden; border: 1px solid #444444}
+        .slider::-webkit-slider-thumb {-webkit-appearance: none; width: 1px; height: 19px; box-shadow: -100px 0 0 100px #56DEF6;}
+        .sliderValue {position: absolute; top:19px;left: 50%;transform: translate(-50%,0); cursor: default; pointer-events:none}
+        /* .slider:active {border: 2px solid #444444} */
+
+        .layerSelected {background-color: #AAAAAA;}
+        .layerDisSelected {background-color: #8F8F8F;}
+        .layerNamesDiv {position: relative; width: 100%; height: 52px; cursor: default; border-radius: 4px;transition: 0.15s; margin-bottom: 3px}
+        .layerNamesText {position: absolute; left: 13px; top: 19px}
+        .layerDisSelected:hover { background-color: #949494 }
+        .layerSelectionBtnDown {background-color: #56DEF6}
+        .layerSelectionBtnUp {background-color: #B7B7B7}
+        .layerSelectionBtn {width: 15px; height: 15px; border: 1px solid #444444; cursor: pointer; position: absolute; right: 14px; top: 18px}
+        .layerSelectionBtn:active {border: 2px solid #444444;}
+        .layerNamesLabel {font-size: 11px;position: absolute; left: 133px; top: 7px}
+
+        .orangeBtn {background-color: #FFB103; border: 1px solid #444444;font-size: 13px; border-radius: 11px;}
+        .orangeBtn:active {border: 2px solid #444444;}
+
+        .orangeBtnInvert {background-color: #191919; color: #FFB103; border: 1px solid #FFB103; font-size: 13px; border-radius: 11px;}
+        .orangeBtnInvert:active {background-color: #FFB103; color: #191919;}
+
+        .clusterDisplay {background-color: #191919; height: 311px; width: 1404px; color: #797979; border-radius: 4px;}
+        .clusterDemoContainer {font-size:0; padding-left: 8px}
+        .clusterDemoImg {margin: 3px; width: 192px; height:240px}
+
+        .boxUnchecked { color: #FFB103; background-color: #191919;}
+        .boxChecked { color: #191919; background-color: #FFB103;}
+        .textCheckBox {height: 14px; width: 46px; border: 1px solid #FFB103; position: absolute; right: 73px; font-size: 12px; cursor: pointer; }
+        .textCheckBoxContainer {width: 192px; margin: 9px 3px; position: relative;}
+        .textCheckBoxContainer input {position: absolute;opacity: 0;cursor: pointer;height: 0;width: 0;}
+      </style>
+    </head>
+    <body>
+      <div class="displays" id = "displays">
+        <div class="canvasContainer" id="canvasContainer">
+          <video autoplay="true" id="videoElement" ></video>
+          <canvas id="inputCanvas"></canvas>
+<!--           <canvas id="inputCanvasX"></canvas> -->
+          <button class="inputBtn inputBtnAct" id="webcamBtn" style="border-radius: 4px 0px 0px 0px; height: 150px; ">
+            <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.5v-1zM4 5h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7c0-1.1.9-2 2-2z"/></svg>
+            <div class="btnText">Webcam</div>
+          </button><br>
+          <button class="inputBtn inputBtnDisact" id="fileBtn" style="border-radius: 0px 0px 0px 4px; height: 150px; margin-top:1px">
+            <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M20.4 14.5L16 10 4 20"/></svg>
+            <div class="btnText">File</div>
+          </button>
+          <button type="button" name="button" id="pauseBtn" class="orangeBtnInvert" style="width:72px;height:19px">Pause</button>
+          <div id="fileUploadContainer" class="orangeBtnInvert" style="width:102px;height:16px">
+            <label for="fileUpload">
+                Choose File
+            </label>
+            <input type="file" id="fileUpload" style="display:none">
+          </div>
+        </div>
+<!--         <img id="outputCanvas"></img> -->
+        <div id="outputCanvas"></div>
+      </div>
+
+      <table class="mainTable">
+        <td id="layerNames">
+        </td>
+        <td id="clusters">
+          <div class="clusterDisplay" style="padding-top:8px;">
+            <span style="margin-left:12px;">Number of Clusters</span>
+            <input type="number" id="clusterNum" name="number_of_cluster" value="5" min="2" max="7">
+            <button type="button" class="orangeBtnInvert" style="margin-left: 8px; width:159px;height:19px" id="generateClusters">Regenerate Cluster</button>
+            <br>
+            <div style="height:7px"></div>
+            <div class="clusterDemoContainer" id = "demoContainer"></div>
+            <div id="clusterLabels">
+            </div>
+          </div>
+
+            
+          <div id="controllers" style="margin-top:10px;">
+            <table class="controllersTable" style="margin-bottom:13px;">
+              <td>
+                <div class="slidecontainer">
+                  <div>Value: <span></span></div>
+                  <input type="range" step="1" min="0" max="7" value="0" class="slider" id="erosion">
+                  <div class="sliderValue">1</div>
+                </div>
+                <div class="slidecontainer">
+                  <div>Value: <span></span></div>
+                  <input type="range" step="1" min="0" max="7" value="0" class="slider" id="dilation">
+                  <div class="sliderValue">1</div>
+                </div>
+              </td>
+              <td>
+                <div class="slidecontainer">
+                  <div>Value: <span></span></div>
+                  <input type="range" step="0.01" min="0.01" max="1.99" value="1" class="slider" id="multiply">
+                  <div class="sliderValue">1</div>
+                </div>
+              </td>
+              <td></td>
+              <td>
+                <div class="slidecontainer">
+                  <div>Value: <span></span></div>
+                  <input type="range" step="1" min="-100" max="100" value="0" class="slider" id="translateX">
+                  <div class="sliderValue">1</div>
+                </div>
+
+                <div class="slidecontainer">
+                  <div>Value: <span></span></div>
+                  <input type="range" step="1" min="-100" max="100" value="0" class="slider" id="translateY">
+                  <div class="sliderValue">1</div>
+                </div>
+              </td>
+              <td>
+                <div class="slidecontainer">
+                  <div>Value: <span></span></div>
+                  <input type="range" step="1" min="-180" max="180" value="0" class="slider" id="angle">
+                  <div class="sliderValue">1</div>
+                </div>
+                <div class="slidecontainer">
+                  <div>Value: <span></span></div>
+                  <input type="range" step="0.01" min="0.1" max="1.9" value="1" class="slider" id="scale">
+                  <div class="sliderValue">1</div>
+                </div>
+              </td>
+              <td></td>
+              <td style="position: relative">
+                <button type="button" id="resetLayer" class="orangeBtn" style="width:159px;height:21px">Reset Current Layer</button>
+              </td>
+            </table>
+
+          </div>
+        </td>
+      </table>
+
+      <!-- <button type="button" id="resetAll">Reset All</button> -->
+
+
+      <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha256-k2WSCIexGzOj3Euiig+TlR8gA0EmPjuc79OEeY5L45g=" crossorigin="anonymous"></script>
+      <script src="https://cdn.socket.io/4.5.0/socket.io.min.js" integrity="sha384-7EyYLQZgWBi67fBtVxw60/OWl1kjsfrPFcaU0pp0nAh+i8FD068QogUvg85Ewy1k" crossorigin="anonymous"></script>
+      <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    </body>
+</html>
