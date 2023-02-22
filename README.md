@@ -24,7 +24,7 @@ If you find the code or paper useful, please cite
 @InProceedings{Zheng2023HAIGEN,
   author         = {Shuoyang Zheng},
   title          = {StyleGAN-Canvas: Augmenting StyleGAN3 for Real-Time Human-AI Co-Creation},
-  booktitle      = {Joint Proceedings of the ACM IUI Workshops 2023, March 2023, Sydney, Australia},
+  booktitle      = {Joint Proceedings of the ACM Intelligent User Interfaces Workshops},
   year           = {2023},
   month          = {March}
 }
