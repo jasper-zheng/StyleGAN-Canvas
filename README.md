@@ -39,16 +39,14 @@ If you find the code or paper useful, please cite
 ## Examples  
 The primary aim of this research is to augment StyleGAN3 with image-conditional generation ability for a co-creative context. To achieve this, we adapt the existing model architecture in StyleGAN3, which takes a latent vector and a class label as the model’s input [[4](https://proceedings.neurips.cc/paper/2021/file/076ccd93ad68be51f23707988e934906-Paper.pdf)], and propose an encoder network to extract features from the conditional image. We also adapt the architecture previously applied to various image-to-image translation models [[17](https://arxiv.org/abs/1611.07004), [18](https://arxiv.org/abs/1711.11585), [19](https://arxiv.org/abs/1910.08914)] to connect the proposed encoder and StyleGAN3’s generator. The modified model, StyleGANCanvas, takes a latent vector and an accompanying image as inputs to guide the generation.  
 
-### Local Editing  
+The canny edges model provides an alternative approach to local editing. Modifying edges in the condition image allows the model to alter semantical elements in the generation. We superimposed edges processed from other images to the original edges to add hair fringe, glasses and smile; we painted on the original edges to modify eyes and add sunglasses.   
 <img src='./docs/fig_editing.png' width='800px'>  
 
+The model for landscape photo generation was trained on the dataset with 512 × 512 resolution, taking inputs with 256×256 resolution. To enlarge the generation canvas, we doubled and tripled the width of inputs, expanding their resolution to 1024 × 256 and 768 × 256. Then, the expanded inputs were taken directly into the generator and convolved by each convolutional layer. Therefore, the expected output resolutions are 2048 × 512 and 1536 × 512. Additional training is not required during the experiment.  
+<img src='./docs/fig_large_git.png' width='800px'>  
 
-### Deblurring model on [FFHQ](https://github.com/NVlabs/ffhq-dataset)    
-<img src='./docs/fig_ffhq_blur_l_git.png'>  
-
-
-### Deblurring model on [LHQ](https://arxiv.org/pdf/2104.06954v1.pdf)    
-<img src='./docs/fig_lhq_blur_git.png'>  
+Sequence of editing performed on intermediate condition images to intentionally create unrealistic and novel outcomes.  
+<img src='./docs/fig_advanced_edit.png'>  
 
 ## Overview  
 Motivated by active divergence ([Berns and Colton, 2020](http://computationalcreativity.net/iccc20/papers/164-iccc20.pdf)), we propose an alternative approach to image-to-image translation that allows the features to be enlarged and interpolated after the network is trained. This provides an extendable generation canvas and significantly broadens the possibility for creative outcomes.  
