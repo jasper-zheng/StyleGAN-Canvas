@@ -8,7 +8,7 @@
 
 [Shuoyang Zheng (Jasper)](https://alaskawinter.cc/)   
 
-To be presented in the 4th HAI-GEN Workshop at the ACM Intelligent User Interfaces Workshops (ACM IUI 2023), March 2023, Sydney, Australia.   
+Presented in the 4th HAI-GEN Workshop at the ACM Intelligent User Interfaces Workshops (ACM IUI 2023), March 2023, Sydney, Australia.   
 
 [[Paper]](https://ceur-ws.org/Vol-3359/paper12.pdf)  
 
