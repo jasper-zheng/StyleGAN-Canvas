@@ -10,7 +10,7 @@
 
 To be presented in the 4th HAI-GEN Workshop at the ACM Intelligent User Interfaces Workshops (ACM IUI 2023), March 2023, Sydney, Australia.   
 
-[[Paper]](https://hai-gen.github.io/2023/papers/2838-paper-HAIGEN-ZhengShuoyang.pdf)  
+[[Paper]](https://ceur-ws.org/Vol-3359/paper12.pdf)  
 
 In this paper, we propose bridging the gap between StyleGAN3 and human-AI co-creative patterns by augmenting the latent variable model with the ability of image-conditional generation. We modify the existing generator architecture in StyleGAN3, enabling it to use high-level visual ideas to guide the human-AI co-creation. The resulting model, StyleGAN-Canvas, can solve various image-to-image translation tasks while maintaining the internal behaviour of StyleGAN3. We deploy our models to a real-time graphic interface and conduct qualitative human subject studies. We use the mixed initiative generative AI interfaces (MIGAI) framework to frame our findings and present a preliminary evaluation of our models’ usability in a generic co-creative context.  
 
